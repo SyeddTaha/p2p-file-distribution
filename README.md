@@ -1,6 +1,6 @@
 # BitTorrent-Style P2P File Distribution System
 
-A lightweight, reliable Peer-to-Peer (P2P) file distribution framework built in Python 3.12+ for a university Computer Networks course.
+A lightweight, reliable Peer-to-Peer (P2P) file distribution framework built in Python 3.12+.
 
 The system demonstrates custom application-layer TCP framing, parallel piece downloads, centralized HTTP tracking, cryptographic integrity verification (SHA-256), path safety, fault tolerance, and empirical performance benchmarking comparing P2P against a Client-Server baseline.
 
