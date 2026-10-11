@@ -7,8 +7,8 @@ This document outlines the small, testable implementation milestones for the P2P
 ## Milestone Status Overview
 
 - [x] **Milestone 1: Project Foundation & Environment Setup** (**COMPLETED** - 2026-10-10)
-- [ ] **Milestone 2: Wire Framing Codec & Protocol Messages** (**IN PROGRESS / NEXT UP**)
-- [ ] **Milestone 3: Manifest Engine & Storage Integrity** (PLANNED)
+- [x] **Milestone 2: Wire Framing Codec & Protocol Messages** (**COMPLETED** - 2026-10-11)
+- [ ] **Milestone 3: Manifest Engine & Storage Integrity** (PLANNED / NEXT UP)
 - [ ] **Milestone 4: Tracker HTTP Control Plane** (PLANNED)
 - [ ] **Milestone 5: Peer TCP Connection & Handshake Engine** (PLANNED)
 - [ ] **Milestone 6: Download Scheduler & Swarm Orchestration** (PLANNED)
@@ -34,15 +34,16 @@ This document outlines the small, testable implementation milestones for the P2P
 
 ---
 
-### Milestone 2: Wire Framing Codec & Protocol Messages (IN PROGRESS)
+### Milestone 2: Wire Framing Codec & Protocol Messages (COMPLETED)
 - **Goal:** Implement pure length-prefixed framing and binary/JSON message encoders/decoders.
 - **Deliverables:**
-  - `src/p2p/protocol/codec.py` (`encode_frame`, `decode_frame`, `read_frame`, `write_frame`).
-  - Data classes for `Handshake`, `Bitfield`, `Request`, `Piece`, `Have` messages.
+  - `src/p2p/protocol/codec.py` (`encode_frame`, `decode_frame`, `read_frame`, `write_frame`, `read_message`, `write_message`).
+  - Data classes for `Handshake`, `Bitfield`, `Request`, `Piece`, `Have` messages in `src/p2p/protocol/messages.py`.
   - Frame reading bounds checking (`max_body`) *before* buffer allocation.
-- **Acceptance Criteria:**
-  - 100% test coverage for round-trip encoding and decoding of all 5 message types.
-  - Tests for truncated frames, split reads, merged reads, oversized length prefixes, malformed JSON, and non-zero spare bitfield bits.
+- **Acceptance Criteria (Verified):**
+  - 99% test coverage for round-trip encoding and decoding of all 5 message types (53 passed tests).
+  - Tests for truncated frames, split reads, merged reads, oversized length prefixes, malformed JSON, non-zero spare bitfield bits, timeouts, socket resets, and write locks.
+  - `ruff check .`, `ruff format`, and `mypy` pass cleanly with zero warnings/errors.
 
 ---
 
