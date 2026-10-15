@@ -1,17 +1,19 @@
 # BitTorrent-Style P2P File Distribution System
 
-A lightweight, reliable Peer-to-Peer (P2P) file distribution framework built in Python 3.12+.
+A Python 3.12+ project for a BitTorrent-style Peer-to-Peer (P2P) file distribution system.
 
-The system demonstrates custom application-layer TCP framing, parallel piece downloads, centralized HTTP tracking, cryptographic integrity verification (SHA-256), path safety, fault tolerance, and empirical performance benchmarking comparing P2P against a Client-Server baseline.
+The project is being developed in milestones. The protocol framing codec and message
+serialization, plus Milestone 3 manifest and verified storage, are implemented and
+tested. Tracker peer management, peer connections, download scheduling, end-to-end
+transfers, and benchmarking remain planned unless noted in the
+[project status](docs/project-status.md).
 
 ---
 
 ## 1. Project Overview & Architecture
 
-- **Tracker Service (HTTP Control Plane):** Built with FastAPI. Maintains in-memory swarm registries, processes peer announcements (`started`, `heartbeat`, `completed`, `stopped`), and evicts stale peers using an injectable clock interface.
-- **Peers (TCP Data Plane):** Concurrent TCP servers and clients exchanging piece data over a custom length-prefixed wire protocol (`HANDSHAKE`, `BITFIELD`, `REQUEST`, `PIECE`, `HAVE`).
-- **Storage & Integrity Layer:** Divides files into fixed chunks (default 256 KiB), creates JSON manifests, computes canonical Swarm IDs, writes chunks safely to `.part` files, and atomically reassembles verified output files.
-- **Benchmark Suite:** Empirical test harness comparing total distribution makespan and throughput across Client-Server vs P2P modes under controlled rate limits.
+- **Implemented:** Length-prefixed TCP framing and message codecs for `HANDSHAKE`, `BITFIELD`, `REQUEST`, `PIECE`, and `HAVE`; a minimal tracker health endpoint; v1 manifest creation, validation, atomic JSON output, canonical Swarm IDs, safe destination paths, verified chunk storage, and atomic file finalization.
+- **Planned:** Tracker swarm/peer registry, peer TCP connection lifecycle, download scheduling, complete swarm transfers, and controlled benchmarks.
 
 ---
 
@@ -19,27 +21,27 @@ The system demonstrates custom application-layer TCP framing, parallel piece dow
 
 ```
 ├── .agents/skills/   # Shareable project & ecosystem AI skills (12 skills)
-├── bench/            # Benchmark scripts, raw CSV data, and generated plots
+├── bench/            # Reserved for planned benchmark scripts, data, and plots
 ├── context/          # Original project requirements specification
 ├── docs/             # Technical specifications, ADRs, status, testing guides
 │   ├── adr/          # Architecture Decision Records
 │   ├── architecture.md
 │   ├── protocol.md
-│   ├── manifest-format.md
+│   ├── manifest-format.md  # Implemented v1 format specification
 │   ├── implementation-plan.md
 │   ├── testing.md
 │   ├── experiments.md
 │   └── project-status.md
-├── src/p2p/          # Core Python application package
-│   ├── tracker/      # FastAPI tracker control plane
-│   ├── peer/         # TCP server, client, scheduler, connection manager
-│   ├── protocol/     # Binary wire framing codec & message definitions
-│   ├── storage/      # JSON manifest parser, path sanitizer, chunk integrity
+├── src/p2p/          # Current application package
+│   ├── tracker/      # Minimal health endpoint; swarm tracking is planned
+│   ├── peer/         # Planned peer networking and scheduler components
+│   ├── protocol/     # Implemented wire framing codec and message definitions
+│   ├── storage/      # Implemented manifest validation and verified file storage
 │   └── config.py     # System constants, defaults, and timeouts
 ├── tests/            # Automated test suite
-│   ├── unit/         # Codec, manifest, scheduler, path safety unit tests
-│   ├── integration/  # TCP handshake, loopback peer, tracker HTTP tests
-│   └── e2e/          # Full multi-peer swarm transfer tests
+│   ├── unit/         # Codec, manifest, storage, and path safety unit tests
+│   ├── integration/  # No integration tests currently checked in
+│   └── e2e/          # Planned full multi-peer transfer tests
 ├── pyproject.toml    # Dependencies and tool configurations (pytest, ruff, mypy)
 ├── requirements.txt  # Quick teammate dependency requirements file
 └── README.md         # Quick start & repository guide
@@ -79,22 +81,27 @@ pytest
 # Run linting checks
 ruff check .
 
-# Run code formatting check
-ruff format --check .
+# Check formatting for implemented protocol and storage code/tests
+ruff format --check src/p2p/protocol src/p2p/storage tests/unit/test_protocol.py tests/unit/test_storage.py
 
 # Run static type checking
-mypy src/p2p
+mypy src/p2p tests
 ```
 
 ---
 
 ## 5. Active Phase & Documentation Status
 
-- **Current Active Milestone:** **Milestone 2 (Wire Framing Codec & Messages)**
-- **Completed Milestones:** **Milestone 1 (Foundation & Tooling Setup)** - `pytest` (4/4 passed), `ruff` clean, `mypy` clean.
-- **Shared AI Skills (12 Skills):** Documented in [`AGENTS.md`](file:///c:/Users/tahaj/OneDrive%20-%20FAST%20National%20University/5th%20Sem%20CN/p2p-file-distribution/AGENTS.md) under Section 9.
-- **Architecture Overview:** [`docs/architecture.md`](file:///c:/Users/tahaj/OneDrive%20-%20FAST%20National%20University/5th%20Sem%20CN/p2p-file-distribution/docs/architecture.md)
-- **Protocol Specification:** [`docs/protocol.md`](file:///c:/Users/tahaj/OneDrive%20-%20FAST%20National%20University/5th%20Sem%20CN/p2p-file-distribution/docs/protocol.md)
-- **Manifest Specification:** [`docs/manifest-format.md`](file:///c:/Users/tahaj/OneDrive%20-%20FAST%20National%20University/5th%20Sem%20CN/p2p-file-distribution/docs/manifest-format.md)
-- **Implementation Plan:** [`docs/implementation-plan.md`](file:///c:/Users/tahaj/OneDrive%20-%20FAST%20National%20University/5th%20Sem%20CN/p2p-file-distribution/docs/implementation-plan.md)
-- **Project Status:** [`docs/project-status.md`](file:///c:/Users/tahaj/OneDrive%20-%20FAST%20National%20University/5th%20Sem%20CN/p2p-file-distribution/docs/project-status.md)
+- **Current active phase:** Milestone 4 — Tracker HTTP Control Plane is **Planned / Next Up**.
+- **Completed milestones:** Milestone 1 — Project Foundation & Tooling Setup;
+ Milestone 2 — Wire Framing Codec & Protocol Messages;
+Milestone 3 — Manifest Engine & Storage Integrity.
+ See the [implementation plan](docs/implementation-plan.md).
+- **Latest verification (2026-10-15):** `pytest` — 105 passed with one Starlette/httpx deprecation warning; `ruff check .` — passed; `mypy src/p2p` — passed (11 source files). Targeted protocol/storage format check passed. See the [project status](docs/project-status.md) for the recorded commands.
+- **Formatting note:** The protocol-scoped `ruff format --check src/p2p/protocol tests/unit/test_protocol.py` passed previously. A broader `ruff format --check src tests` reported formatting needed in `src/p2p/config.py`.
+- **AI guidance:** [AGENTS.md](AGENTS.md)
+- **Architecture overview:** [docs/architecture.md](docs/architecture.md)
+- **Protocol specification:** [docs/protocol.md](docs/protocol.md)
+- **Manifest specification:** [docs/manifest-format.md](docs/manifest-format.md)
+- **Implementation plan:** [docs/implementation-plan.md](docs/implementation-plan.md)
+- **Project status:** [docs/project-status.md](docs/project-status.md)

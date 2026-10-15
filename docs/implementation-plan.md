@@ -8,7 +8,7 @@ This document outlines the small, testable implementation milestones for the P2P
 
 - [x] **Milestone 1: Project Foundation & Environment Setup** (**COMPLETED** - 2026-10-10)
 - [x] **Milestone 2: Wire Framing Codec & Protocol Messages** (**COMPLETED** - 2026-10-11)
-- [ ] **Milestone 3: Manifest Engine & Storage Integrity** (PLANNED / NEXT UP)
+- [x] **Milestone 3: Manifest Engine & Storage Integrity** (**COMPLETED - TESTED** - 2026-10-15)
 - [ ] **Milestone 4: Tracker HTTP Control Plane** (PLANNED)
 - [ ] **Milestone 5: Peer TCP Connection & Handshake Engine** (PLANNED)
 - [ ] **Milestone 6: Download Scheduler & Swarm Orchestration** (PLANNED)
@@ -47,15 +47,17 @@ This document outlines the small, testable implementation milestones for the P2P
 
 ---
 
-### Milestone 3: Manifest Engine & Storage Integrity
+### Milestone 3: Manifest Engine & Storage Integrity (COMPLETED - TESTED)
 - **Goal:** File chunking, manifest JSON creation/validation, path traversal protection, SHA-256 validation, `.part` file writing, and atomic finalization.
 - **Deliverables:**
   - `src/p2p/storage/manifest.py` (build manifest, validate schema, compute canonical Swarm ID).
   - `src/p2p/storage/manager.py` (safe target path resolution, chunk writer, SHA-256 chunk verifier, atomic finalize rename).
 - **Acceptance Criteria:**
   - Manifest validator rejects malformed files, invalid counts, illegal chunk sizes, or invalid hex digests.
-  - `validate_safe_filename()` blocks path traversal attempts (`..`, drive letters, absolute paths, NUL bytes).
+  - `validate_safe_filename()` blocks path traversal attempts (`..`), drive-letter and absolute paths, NUL bytes, and unsafe platform-specific names.
   - Corrupt chunks are rejected and not written to disk. Whole-file verification matches before `.part` -> final rename.
+- **Verified implementation:** `manifest.py` builds, validates, loads, and atomically writes the v1 JSON schema; computes the canonical Swarm ID; caps input at 4 MiB and at 30,000 chunks. `manager.py` verifies each chunk before writing and verifies the on-disk file before atomic replacement. Empty files are rejected.
+- **Verification:** `pytest` — 105 passed; `ruff check .` — passed; `mypy src/p2p` — passed (11 source files); targeted Ruff formatting check passed. Run on 2026-10-15 in the current working tree.
 
 ---
 

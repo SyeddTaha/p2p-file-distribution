@@ -36,9 +36,9 @@ Testing network applications requires strict isolation, determinism, and clean r
 |---|---|---|
 | **Protocol Codec** | Message Encoding / Decoding | Round-trip serialization for Handshake, Bitfield, Request, Piece, Have. |
 | **Protocol Framing** | Stream Boundaries & Safety | Split frame delivery, merged frames in single read, oversized length prefix protection, truncated header/body. |
-| **Manifest & Storage** | JSON Manifest Parsing | Valid manifest loading, invalid schema, illegal chunk count, invalid chunk/file SHA-256 digests. |
-| **Manifest & Storage** | Path Safety | `validate_safe_filename()` blocking `..`, absolute paths, Windows drive letters, NUL characters. |
-| **Storage & Integrity** | Chunk Writing & Verification | Write piece at offset, reject invalid SHA-256 chunk, whole-file verification, atomic `.part` rename. |
+| **Manifest & Storage** | JSON Manifest Parsing | Build/load/write manifests and canonical Swarm ID; reject malformed fields/JSON, duplicate keys, empty files, invalid chunk counts/sizes, and invalid SHA-256 digests. |
+| **Manifest & Storage** | Path Safety | `validate_safe_filename()` blocks traversal, absolute/drive paths, separators, NUL, overlong names, Windows reserved names, trailing dot/space, and symbolic-link destinations. |
+| **Storage & Integrity** | Chunk Writing & Verification | Verify index/length/hash before write; ignore verified duplicates; cover one-byte, single-chunk, exact-multiple, and remainder sizes; reject incomplete/corrupted files; preserve `.part` on whole-file mismatch; atomically finalize valid files. |
 | **Tracker Service** | Peer Announcements | `POST /announce` (`started`, `heartbeat`, `completed`, `stopped`), return peer list excluding self. |
 | **Tracker Service** | Stale Peer Expiry | Inactive peer evicted after `3 * heartbeat_interval` using fake clock step. |
 | **Peer Connection** | TCP Handshake Engine | Valid handshake exchange, version mismatch rejection, wrong swarm ID rejection, unsolicited piece rejection. |
