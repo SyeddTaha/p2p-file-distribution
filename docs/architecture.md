@@ -54,10 +54,10 @@ This system is a miniature BitTorrent-style Peer-to-Peer (P2P) file distribution
 
 The Tracker coordinates peer discovery:
 - **Endpoints:**
-  - `POST /announce`: Accepts peer announcements (`swarm_id`, `peer_id`, `host`, `port`, `event`). Events: `started`, `heartbeat`, `completed`, `stopped`. Returns interval and a list of active peers (excluding caller).
-  - `GET /swarms/{swarm_id}/peers`: Returns list of peers in a swarm (`peer_id`, `host`, `port`, `last_seen`, `is_seeder`).
+  - `POST /announce`: Accepts peer announcements (`swarm_id`, `peer_id`, `host`, `port`, `event`, optional `is_seeder`). Events: `started`, `heartbeat`, `completed`, `stopped`. Returns the 30-second heartbeat interval and at most 50 active peers (excluding caller). Unknown heartbeat announcements register the peer, allowing recovery after a tracker restart.
+  - `GET /swarms/{swarm_id}/peers`: Requires a 64-character lowercase hexadecimal swarm ID and returns active peers (`peer_id`, `host`, `port`, `last_seen`, `is_seeder`). A valid but unknown swarm returns an empty list.
   - `GET /health`: Basic health check.
-- **Peer Expiry:** In-memory registry tracks `last_seen` timestamp using an injectable clock interface. Peers inactive for `3 * heartbeat_interval` (default interval: 30s) are marked stale and evicted.
+- **Peer Expiry:** In-memory registry tracks `last_seen` timestamp using an injectable monotonic clock interface. Peers inactive for more than `3 * heartbeat_interval` (default interval: 30s, expiry: 90s) are evicted lazily during announce/list operations or by an explicit registry eviction call. Peers exactly 90 seconds old remain active.
 - **Peer Address Handling:** LAN testing uses advertised `host`/`port` provided in `/announce`.
 
 ---

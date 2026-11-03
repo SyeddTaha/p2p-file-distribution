@@ -39,8 +39,10 @@ Testing network applications requires strict isolation, determinism, and clean r
 | **Manifest & Storage** | JSON Manifest Parsing | Build/load/write manifests and canonical Swarm ID; reject malformed fields/JSON, duplicate keys, empty files, invalid chunk counts/sizes, and invalid SHA-256 digests. |
 | **Manifest & Storage** | Path Safety | `validate_safe_filename()` blocks traversal, absolute/drive paths, separators, NUL, overlong names, Windows reserved names, trailing dot/space, and symbolic-link destinations. |
 | **Storage & Integrity** | Chunk Writing & Verification | Verify index/length/hash before write; ignore verified duplicates; cover one-byte, single-chunk, exact-multiple, and remainder sizes; reject incomplete/corrupted files; preserve `.part` on whole-file mismatch; atomically finalize valid files. |
-| **Tracker Service** | Peer Announcements | `POST /announce` (`started`, `heartbeat`, `completed`, `stopped`), return peer list excluding self. |
-| **Tracker Service** | Stale Peer Expiry | Inactive peer evicted after `3 * heartbeat_interval` using fake clock step. |
+| **Tracker Service** | Peer Announcements | `POST /announce` schema and event validation, unknown-field rejection, idempotency, peer exclusion, and the 50-peer response cap. |
+| **Tracker Service** | Peer Names & Hosts | RFC 1123 label/hostname length edges, optional trailing dot, IPv4/IPv6, and invalid hostname syntax. |
+| **Tracker Service** | Stale Peer Expiry | Fake-clock boundary at exactly 90 seconds and just beyond; eviction during announce/listing and empty-swarm cleanup. |
+| **Tracker Service** | HTTP Peer Listing | `GET /swarms/{swarm_id}/peers` response fields, malformed ID rejection, unknown valid swarm response, and registry dependency isolation. |
 | **Peer Connection** | TCP Handshake Engine | Valid handshake exchange, version mismatch rejection, wrong swarm ID rejection, unsolicited piece rejection. |
 | **Download Scheduler** | Chunk Reservation | `IN_FLIGHT` reservation prevention of duplicate requests across tasks, peer failure release of chunks. |
 | **End-to-End** | Multi-Peer File Transfer | Tracker + Seeder + 3 Leechers downloading 1 MB file; bit-for-bit SHA-256 verification of output. |
