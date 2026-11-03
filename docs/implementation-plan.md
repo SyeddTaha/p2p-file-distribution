@@ -9,7 +9,7 @@ This document outlines the small, testable implementation milestones for the P2P
 - [x] **Milestone 1: Project Foundation & Environment Setup** (**COMPLETED** - 2026-10-10)
 - [x] **Milestone 2: Wire Framing Codec & Protocol Messages** (**COMPLETED** - 2026-10-11)
 - [x] **Milestone 3: Manifest Engine & Storage Integrity** (**COMPLETED - TESTED** - 2026-10-15)
-- [ ] **Milestone 4: Tracker HTTP Control Plane** (PLANNED)
+- [x] **Milestone 4: Tracker HTTP Control Plane** (**COMPLETED - TESTED - 2026-11-03**)
 - [ ] **Milestone 5: Peer TCP Connection & Handshake Engine** (PLANNED)
 - [ ] **Milestone 6: Download Scheduler & Swarm Orchestration** (PLANNED)
 - [ ] **Milestone 7: End-to-End Swarm Integration & Seeder CLI** (PLANNED)
@@ -69,7 +69,10 @@ This document outlines the small, testable implementation milestones for the P2P
 - **Acceptance Criteria:**
   - `POST /announce` registers peers, updates `last_seen`, returns active peer list excluding caller.
   - Inactive peers (`> 3 * heartbeat_interval`) are automatically evicted.
-  - Full FastAPI `TestClient` integration test suite.
+  - `GET /swarms/{swarm_id}/peers` returns validated, active peer details; a valid unknown swarm returns an empty list.
+  - FastAPI integration tests use `httpx.AsyncClient` with `ASGITransport`.
+- **Verified implementation:** Strict Pydantic request validation; synchronous in-memory registry with injectable monotonic clock and deterministic random sampling; start/heartbeat/completed/stopped semantics; stale-peer eviction and empty-swarm cleanup; FastAPI routes with dependency injection and 50-peer maximum.
+- **Verification:** 116 Milestone 4 tests passed; Ruff lint/format and Mypy passed for the Milestone 4 files. Full-project verification details, including unrelated platform/type-check limitations, are recorded in `docs/project-status.md`.
 
 ---
 
