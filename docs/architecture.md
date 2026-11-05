@@ -72,6 +72,7 @@ The Tracker coordinates peer discovery:
   3. Both sides send `BITFIELD` (chunk availability).
   4. Steady state: `REQUEST` <-> `PIECE` exchange; `HAVE` broadcasts on verified chunk arrival.
   5. Connection termination: clean close or abort on protocol error.
+- **Milestone 5 implementation:** `p2p.peer.connection.PeerConnection` encapsulates the 5-state lifecycle (`UNCONNECTED`, `AWAIT_HANDSHAKE`, `AWAIT_BITFIELD`, `STEADY_STATE`, `CLOSED`), in-flight request bounding (`MAX_INFLIGHT_PER_PEER`), serialized writes with `asyncio.Lock`, and automatic socket cleanup. `p2p.peer.server.PeerServer` provides an async TCP listener for peer swarms with ephemeral port binding, concurrent connection tracking, and graceful shutdown.
 
 ---
 
