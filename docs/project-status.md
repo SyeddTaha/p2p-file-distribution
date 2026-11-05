@@ -1,6 +1,6 @@
 # Project Status & Team Workflow Tracking
 
-> Last updated: 2026-11-03. Milestone 4 was audited and verified in the current worktree; no commits were created.
+> Last updated: 2026-11-05. Milestone 5 (Peer TCP Connection Engine) completed, verified, and tested.
 
 ---
 
@@ -12,7 +12,7 @@
 | **Milestone 2** | **Wire Framing Codec & Messages** | **DONE** | 2026-10-11 | `pytest` (53/53 passed), `ruff` (clean), `mypy` (clean), 99% coverage |
 | **Milestone 3** | **Manifest Engine & Storage Integrity** | **TESTED** | 2026-10-15 | Full `pytest` (105 passed), `ruff check .`, `mypy src/p2p`, targeted format check passed |
 | **Milestone 4** | **Tracker HTTP Control Plane** | **TESTED** | 2026-11-03 | 116 Milestone 4 tests passed; targeted Ruff, formatting, and Mypy passed |
-| **Milestone 5** | **Peer TCP Connection Engine** | PLANNED | To Do | TCP server/client, handshake state machine, bitfields |
+| **Milestone 5** | **Peer TCP Connection Engine** | **TESTED** | 2026-11-05 | 32 Milestone 5 tests passed (26 unit, 6 integration), full suite 253 passed, Ruff and Mypy clean |
 | **Milestone 6** | **Download Scheduler & Orchestrator** | PLANNED | To Do | Chunk reservation (`IN_FLIGHT`), retries, HAVE broadcasts |
 | **Milestone 7** | **End-to-End Swarm & Seeder CLI** | PLANNED | To Do | Full multi-peer loopback file distribution E2E tests |
 | **Milestone 8** | **Benchmarking & Baseline Mode** | PLANNED | To Do | Client-Server vs P2P comparison, CSV dataset, plots |
@@ -66,10 +66,14 @@ mypy src/p2p
 | Tracker | Peer registration / announce | **Tested** | Yes | Started, heartbeat (including re-registration after tracker restart), completed, stopped; peer exclusion and 50-peer cap |
 | Tracker | Heartbeat and stale-peer expiry | **Tested** | Yes | Injectable monotonic clock; expiry is strictly older than 90 seconds; lazy and explicit cleanup |
 | Tracker | Peer-list and health HTTP API | **Tested** | Yes | ASGI integration tests cover response schemas, valid unknown swarms, malformed swarm IDs, and dependency overrides |
-| Peer | Seeding (serving verified chunks) | Planned | No | Milestone 5/7 |
+| Peer | TCP Connection & State Machine | **Tested** | Yes | `PeerConnection` states (`UNCONNECTED` to `CLOSED`), version/swarm checks, timeouts, socket teardown |
+| Peer | Async TCP Server / Client Connector | **Tested** | Yes | `PeerServer` ephemeral binding, concurrent client tracking, graceful shutdown |
+| Peer | Handshake & Bitfield exchange | **Tested** | Yes | Bi-directional exchange, spare bit verification, self-connection rejection |
+| Peer | Steady-state message transfer | **Tested** | Yes | `REQUEST`, `PIECE`, `HAVE` with range checks and unsolicited piece rejection |
+| Peer | Seeding (serving verified chunks) | Planned | No | Milestone 7 CLI / worker integration |
 | Peer | Downloading with scheduling | Planned | No | Milestone 6 |
 | Peer | Retries, peer failure handling, cancellation | Planned | No | Milestone 6 |
-| Testing | Unit tests | **Tested** | Yes | Milestone 4 suite: 116 passed; full-project Windows symlink limitation and remaining test results are logged below |
+| Testing | Unit & integration tests | **Tested** | Yes | Full project suite: 253 passed cleanly; Milestone 5 suite: 32 passed (26 unit, 6 integration) |
 | Benchmarking | Baseline mode & runner | Planned | No | Milestone 8 |
 
 ---
@@ -78,20 +82,20 @@ mypy src/p2p
 
 | Document | State | Purpose |
 |---|---|---|
-| `README.md` | Created | Quick start, stack, project overview |
+| `README.md` | Updated | Quick start, stack, project overview, active milestones |
 | `AGENTS.md` | Updated | Shared AI rules & all 12 project/ecosystem skills |
 | `requirements.txt` | Created | Team dependency requirements file |
 | `docs/architecture.md` | Created | Components, state ownership, sequence diagrams |
 | `docs/protocol.md` | Created | Wire format specification, message codes, state machine |
 | `docs/manifest-format.md` | Updated | JSON schema, limits, Swarm ID, safe paths, storage workflow |
 | `docs/manifest.md` | Created | Linked summary |
-| `docs/implementation-plan.md` | Created | Detailed milestones 1 through 8 |
+| `docs/implementation-plan.md` | Updated | Detailed milestones 1 through 8 (Milestones 1-5 completed) |
 | `docs/testing.md` | Created | Pyramid, scenario matrix, test runner guide |
 | `docs/experiments.md` | Created | Hypotheses, control variables, CSV format |
 | `docs/adr/0001-project-structure-and-stack.md` | Created | Stack & directory layout |
 | `docs/adr/0002-wire-protocol-framing-and-limits.md` | Created | Framing format & security bounds |
 | `docs/adr/0003-manifest-v1-and-storage-policy.md` | Created | Manifest v1, empty-file and storage policies |
-| `docs/project-status.md` | Updated | Milestone 3 and Milestone 4 verified state and current phase |
+| `docs/project-status.md` | Updated | Milestone 5 completed & verified state |
 
 ---
 
@@ -114,18 +118,19 @@ mypy src/p2p
 | 2026-11-03 | Milestone 4 (current worktree) | `.\.venv\Scripts\ruff.exe check src\p2p\tracker\models.py src\p2p\tracker\registry.py src\p2p\tracker\server.py tests\helpers\clock.py tests\unit\test_tracker_registry.py tests\integration\test_tracker_api.py` | **Passed** (All checks passed) |
 | 2026-11-03 | Milestone 4 (current worktree) | `.\.venv\Scripts\ruff.exe format --check src\p2p\tracker\models.py src\p2p\tracker\registry.py src\p2p\tracker\server.py tests\helpers\clock.py tests\unit\test_tracker_registry.py tests\integration\test_tracker_api.py` | **Passed** (6 files already formatted) |
 | 2026-11-03 | Milestone 4 (current worktree) | `.\.venv\Scripts\mypy.exe src\p2p\tracker\models.py src\p2p\tracker\registry.py src\p2p\tracker\server.py tests\helpers\clock.py tests\unit\test_tracker_registry.py tests\integration\test_tracker_api.py` | **Passed** (No issues found in 6 source files) |
-| 2026-11-03 | Full project (current worktree) | `.\.venv\Scripts\python.exe -m pytest` | **220 passed, 1 failed**; `tests/unit/test_storage.py::test_validate_safe_filename_rejects_symbolic_link` cannot create a symlink without Windows privilege (`WinError 1314`) |
-| 2026-11-03 | Full project (current worktree) | `.\.venv\Scripts\python.exe -m pytest -k "not test_validate_safe_filename_rejects_symbolic_link"` | **Passed** (220 passed, 1 deselected; one upstream Starlette/httpx deprecation warning) |
-| 2026-11-03 | Full project (current worktree) | `.\.venv\Scripts\mypy.exe src\p2p tests` | **Failed only on pre-existing Milestone 3 issue**: `tests/unit/test_storage.py:27` missing generic type arguments for `dict` |
+| 2026-11-05 | Milestone 5 | `.\.venv\Scripts\python.exe -m pytest tests\unit\test_peer_connection.py tests\integration\test_peer_loopback.py --cov=src/p2p/peer -v` | **Passed** (32 passed in 2.49s, 80% coverage on `src/p2p/peer`) |
+| 2026-11-05 | Full project | `.\.venv\Scripts\python.exe -m pytest` | **Passed** (253 passed, 1 Starlette deprecation warning) |
+| 2026-11-05 | Full project | `.\.venv\Scripts\ruff.exe check .` | **Passed** (All checks passed) |
+| 2026-11-05 | Full project | `.\.venv\Scripts\ruff.exe format --check src/p2p tests` | **Passed** (29 files already formatted) |
+| 2026-11-05 | Full project | `.\.venv\Scripts\mypy.exe src\p2p tests` | **Passed** (No issues found in 29 source files) |
 
 ## 6. Open Issues & Known Limitations
 
 - Milestone 3 storage operations are synchronous; async callers must offload large file work and serialize access to a shared `StorageManager`.
-- Partial-download resume and serving verified chunks to peers are deferred to later milestones.
 - Full test runs emit one upstream Starlette/httpx deprecation warning; it does not fail tests.
-- The full suite's storage symlink test requires Windows symlink privileges; without them it fails with `WinError 1314`. All remaining tests pass.
-- Full-project Mypy still reports the existing `tests/unit/test_storage.py:27` generic `dict` annotation issue; Milestone 4 source and tests type-check cleanly.
+- Download scheduling logic, chunk reservation, parallel downloading, and retries are deferred to Milestone 6.
+- End-to-end swarm transfers and CLI are deferred to Milestone 7.
 
 ## 7. Decisions Needed
 
-- None for Milestone 4. The v1 empty-file and resume policies are recorded in [ADR 0003](adr/0003-manifest-v1-and-storage-policy.md).
+- None for Milestone 5. Concurrency bounds and connection state machine follow the approved wire protocol in `docs/protocol.md` and ADR 0002.

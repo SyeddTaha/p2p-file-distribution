@@ -9,8 +9,8 @@ This document outlines the small, testable implementation milestones for the P2P
 - [x] **Milestone 1: Project Foundation & Environment Setup** (**COMPLETED** - 2026-10-10)
 - [x] **Milestone 2: Wire Framing Codec & Protocol Messages** (**COMPLETED** - 2026-10-11)
 - [x] **Milestone 3: Manifest Engine & Storage Integrity** (**COMPLETED - TESTED** - 2026-10-15)
-- [x] **Milestone 4: Tracker HTTP Control Plane** (**COMPLETED - TESTED - 2026-11-03**)
-- [ ] **Milestone 5: Peer TCP Connection & Handshake Engine** (PLANNED)
+- [x] **Milestone 4: Tracker HTTP Control Plane** (**COMPLETED - TESTED** - 2026-11-03)
+- [x] **Milestone 5: Peer TCP Connection & Handshake Engine** (**COMPLETED - TESTED** - 2026-11-05)
 - [ ] **Milestone 6: Download Scheduler & Swarm Orchestration** (PLANNED)
 - [ ] **Milestone 7: End-to-End Swarm Integration & Seeder CLI** (PLANNED)
 - [ ] **Milestone 8: Client-Server Baseline & Performance Benchmarking** (PLANNED)
@@ -76,14 +76,18 @@ This document outlines the small, testable implementation milestones for the P2P
 
 ---
 
-### Milestone 5: Peer TCP Connection & Handshake Engine
+### Milestone 5: Peer TCP Connection & Handshake Engine (COMPLETED - TESTED)
 - **Goal:** Async TCP listener server and client connector managing connection lifecycle, handshake exchange, bitfield validation, and socket timeouts.
 - **Deliverables:**
-  - `src/p2p/peer/connection.py` (PeerConnection state machine wrapper over StreamReader/StreamWriter).
-- **Acceptance Criteria:**
+  - `src/p2p/peer/connection.py` (`PeerConnection` state machine wrapper over `StreamReader`/`StreamWriter`).
+  - `src/p2p/peer/server.py` (`PeerServer` async TCP listener with connection tracking and graceful shutdown).
+- **Acceptance Criteria (Verified):**
   - Successfully connects two loopback peers, validates handshakes, and exchanges bitfields.
-  - Reject connections on mismatched version, wrong swarm ID, or out-of-order protocol messages.
-  - Timeouts enforced on connect, handshake, and frame reads. Sockets closed cleanly without task leaks.
+  - Reject connections on mismatched version, wrong swarm ID, self-connection, or out-of-order protocol messages.
+  - Timeouts enforced on connect, handshake, and idle/stall frame reads. Sockets closed cleanly without task leaks.
+  - Bi-directional steady state transfers for `REQUEST`, `PIECE`, and `HAVE` with range checks and unsolicited piece rejection.
+- **Verified implementation:** `PeerConnection` encapsulates connection states (`UNCONNECTED`, `AWAIT_HANDSHAKE`, `AWAIT_BITFIELD`, `STEADY_STATE`, `CLOSED`), serialized writes with `asyncio.Lock`, in-flight request bounding, and clean socket teardown. `PeerServer` handles ephemeral port binding, multiple concurrent clients, and cancellation cleanup.
+- **Verification:** 32 Milestone 5 tests passed (26 unit, 6 integration) in 1.68s; full project suite 253 passed; Ruff lint, format, and Mypy passed cleanly on 2026-11-05.
 
 ---
 

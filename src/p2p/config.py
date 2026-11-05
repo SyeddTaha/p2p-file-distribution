@@ -7,8 +7,8 @@ PROTOCOL_VERSION: Final[int] = 1
 
 # Chunk & Payload Boundaries
 DEFAULT_CHUNK_SIZE: Final[int] = 256 * 1024  # 256 KiB
-MAX_CHUNK_SIZE: Final[int] = 1024 * 1024     # 1 MiB
-MAX_HANDSHAKE_BODY: Final[int] = 4096         # 4 KiB safety limit for handshake JSON
+MAX_CHUNK_SIZE: Final[int] = 1024 * 1024  # 1 MiB
+MAX_HANDSHAKE_BODY: Final[int] = 4096  # 4 KiB safety limit for handshake JSON
 MAX_FRAME_SIZE: Final[int] = 1 + 4 + MAX_CHUNK_SIZE  # 1,048,581 bytes
 
 # Network Timeouts (seconds)

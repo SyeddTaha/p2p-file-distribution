@@ -2,18 +2,18 @@
 
 A Python 3.12+ project for a BitTorrent-style Peer-to-Peer (P2P) file distribution system.
 
-The project is being developed in milestones. The protocol framing codec and message
-serialization, plus Milestone 3 manifest and verified storage, are implemented and
-tested. Tracker peer management, peer connections, download scheduling, end-to-end
-transfers, and benchmarking remain planned unless noted in the
+The project is being developed in milestones. Milestones 1 through 5 (Foundation,
+Wire Framing Codec, Manifest & Storage Integrity, Tracker Control Plane, and Peer
+TCP Connection Engine) are implemented and tested. Download scheduling, end-to-end
+transfers, and benchmarking remain planned as tracked in the
 [project status](docs/project-status.md).
 
 ---
 
 ## 1. Project Overview & Architecture
 
-- **Implemented:** Length-prefixed TCP framing and message codecs for `HANDSHAKE`, `BITFIELD`, `REQUEST`, `PIECE`, and `HAVE`; a minimal tracker health endpoint; v1 manifest creation, validation, atomic JSON output, canonical Swarm IDs, safe destination paths, verified chunk storage, and atomic file finalization.
-- **Planned:** Tracker swarm/peer registry, peer TCP connection lifecycle, download scheduling, complete swarm transfers, and controlled benchmarks.
+- **Implemented:** Length-prefixed TCP framing and message codecs (`HANDSHAKE`, `BITFIELD`, `REQUEST`, `PIECE`, `HAVE`); FastAPI Tracker HTTP control plane (`/announce`, `/swarms/{id}/peers`, `/health`) with in-memory registry, stale-peer expiry, and monotonic clock injection; v1 manifest creation, validation, atomic JSON output, canonical Swarm IDs, safe destination paths, verified chunk storage, and atomic file finalization; peer TCP connection engine (`PeerConnection` and `PeerServer`) with state machine, handshake/bitfield exchange, range checks, and socket timeouts.
+- **Planned:** Download scheduler with chunk reservation (`IN_FLIGHT`) and retries (Milestone 6), end-to-end CLI & swarm integration (Milestone 7), and controlled benchmark harness (Milestone 8).
 
 ---
 
@@ -92,13 +92,15 @@ mypy src/p2p tests
 
 ## 5. Active Phase & Documentation Status
 
-- **Current active phase:** Milestone 4 — Tracker HTTP Control Plane is **Planned / Next Up**.
-- **Completed milestones:** Milestone 1 — Project Foundation & Tooling Setup;
- Milestone 2 — Wire Framing Codec & Protocol Messages;
-Milestone 3 — Manifest Engine & Storage Integrity.
- See the [implementation plan](docs/implementation-plan.md).
-- **Latest verification (2026-10-15):** `pytest` — 105 passed with one Starlette/httpx deprecation warning; `ruff check .` — passed; `mypy src/p2p` — passed (11 source files). Targeted protocol/storage format check passed. See the [project status](docs/project-status.md) for the recorded commands.
-- **Formatting note:** The protocol-scoped `ruff format --check src/p2p/protocol tests/unit/test_protocol.py` passed previously. A broader `ruff format --check src tests` reported formatting needed in `src/p2p/config.py`.
+- **Current active phase:** Milestone 6 — Download Scheduler & Swarm Orchestration is **Planned / Next Up**.
+- **Completed milestones:**
+  - Milestone 1 — Project Foundation & Tooling Setup
+  - Milestone 2 — Wire Framing Codec & Protocol Messages
+  - Milestone 3 — Manifest Engine & Storage Integrity
+  - Milestone 4 — Tracker HTTP Control Plane
+  - Milestone 5 — Peer TCP Connection Engine
+  See the [implementation plan](docs/implementation-plan.md).
+- **Latest verification (2026-11-05):** `pytest` — 253 passed with one Starlette/httpx deprecation warning; `ruff check .` — passed; `mypy src/p2p tests` — passed (29 source files); `ruff format --check src/p2p tests` — passed. See the [project status](docs/project-status.md) for full test logs.
 - **AI guidance:** [AGENTS.md](AGENTS.md)
 - **Architecture overview:** [docs/architecture.md](docs/architecture.md)
 - **Protocol specification:** [docs/protocol.md](docs/protocol.md)

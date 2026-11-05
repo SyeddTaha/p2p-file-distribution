@@ -3,6 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -24,7 +25,9 @@ from p2p.storage.manifest import (
 )
 
 
-def _manifest_for(data: bytes, file_name: str = "sample.bin", chunk_size: int = 4) -> dict:
+def _manifest_for(
+    data: bytes, file_name: str = "sample.bin", chunk_size: int = 4
+) -> dict[str, Any]:
     chunks = [
         {
             "index": index,
