@@ -16,7 +16,7 @@ Testing network applications requires strict isolation, determinism, and clean r
 ```
                   / \
                  /   \
-                / E2E \       <-- Full Tracker + Multi-Peer Loopback Swarms
+                / E2E \       <-- Full Tracker + Multi-Peer Loopback Swarms (Milestone 7)
                /-------\
               / Integr. \     <-- Socket Handshake, Bitfield Exchange, Tracker Endpoints
              /-----------\
@@ -45,7 +45,9 @@ Testing network applications requires strict isolation, determinism, and clean r
 | **Tracker Service** | HTTP Peer Listing | `GET /swarms/{swarm_id}/peers` response fields, malformed ID rejection, unknown valid swarm response, and registry dependency isolation. |
 | **Peer Connection** | TCP Handshake Engine | Valid handshake exchange, version mismatch rejection, wrong swarm ID rejection, unsolicited piece rejection. |
 | **Download Scheduler** | Chunk Reservation | `IN_FLIGHT` reservation prevention of duplicate requests across tasks, peer failure release of chunks. |
-| **End-to-End** | Multi-Peer File Transfer | Tracker + Seeder + 3 Leechers downloading 1 MB file; bit-for-bit SHA-256 verification of output. |
+| **Download Worker** | Async Fetch / Retry Flow | Unit tests cover storage-verified chunks, retries, retained reservations during retries, retry exhaustion, HAVE updates while awaiting PIECE, unexpected REQUEST, cancellation, and completion tracking. |
+| **Swarm Downloader** | Multi-Peer Orchestration | Loopback tests cover concurrent peer requests, storage finalization, HAVE broadcasts, corrupt-peer and disconnect failover, no available chunks, and cancellation cleanup. |
+| **End-to-End (Milestone 7)** | Tracker-Driven File Transfer | Full tracker + seeder + multiple leechers and CLI workflow; not implemented in Milestone 6. |
 
 ---
 
@@ -67,4 +69,26 @@ pytest tests/e2e/
 
 # Run with coverage report
 pytest --cov=src/p2p
+
+# Measure downloader module coverage across unit and loopback tests
+pytest tests/unit/test_scheduler.py tests/integration/test_downloader_loopback.py --cov=p2p.peer.downloader --cov-report=term-missing -ra
+```
+
+### Milestone 6 verification
+
+On 2026-11-09 the focused command above passed 20 tests and measured 90%
+statement coverage for `src/p2p/peer/downloader.py`. Its unexecuted statements
+are defensive validation branches and exceptional fallback paths; the
+milestone's functional flows are additionally exercised over loopback. Full
+tracker-driven E2E/CLI coverage belongs to Milestone 7.
+
+The loopback downloader integration tests were run five consecutive times on
+2026-11-09, with all five tests passing in every run. To repeat that stability
+check in PowerShell:
+
+```powershell
+for ($i = 1; $i -le 5; $i++) {
+    .\.venv\Scripts\python.exe -m pytest tests\integration\test_downloader_loopback.py -q
+    if ($LASTEXITCODE -ne 0) { throw "Loopback test run $i failed" }
+}
 ```

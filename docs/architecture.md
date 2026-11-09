@@ -8,7 +8,7 @@ This system is a miniature BitTorrent-style Peer-to-Peer (P2P) file distribution
 1. **Tracker (HTTP Control Plane):** FastAPI web server keeping in-memory state of active swarms, registered peers, seeders/leechers, and peer heartbeats. Does **not** carry or relay file contents.
 2. **Peers (TCP Data Plane):** Nodes acting simultaneously as uploaders (seeders/leechers) and downloaders over custom application-layer TCP protocol connections.
 3. **Storage & Integrity Layer:** Divides files into fixed-size chunks, creates JSON manifests with SHA-256 hashes, handles chunk storage in `.part` files, and reassembles files atomically.
-4. **Download Scheduler & Swarm Orchestrator:** Manages peer discovery, connection pools, chunk reservation, parallel downloading, retries, and HAVE broadcasts.
+4. **Download Scheduler & Coordinator:** The scheduler tracks chunk states and peer availability. `SwarmDownloader` coordinates one worker per already-connected peer, bounded parallel requests, storage verification, retry/failover, HAVE updates, and cleanup. Tracker discovery and CLI integration are Milestone 7 work.
 5. **Benchmark & Test Harness:** Automated scripts to measure makespan, throughput, peer upload contribution, and compare against a client-server baseline.
 
 ### Non-Goals
@@ -88,19 +88,48 @@ The Tracker coordinates peer discovery:
 
 ---
 
-## 6. Concurrency & State Ownership Rules
+## 6. Milestone 6 Download Flow
+
+`SwarmDownloader` accepts an already-connected set of `PeerConnection` objects,
+a matching `DownloadScheduler`, and a `StorageManager`. It owns and closes those
+connections. Tracker discovery and creation of those connections are outside its
+scope.
+
+1. Register each peer's handshake bitfield with the scheduler.
+2. Select peers that advertise a `MISSING` chunk. The scheduler makes a seeded
+   random choice among that peer's eligible chunks (default seed: `0`).
+3. Reserve synchronously before network I/O. Run one request per eligible peer
+   concurrently, up to `MAX_GLOBAL_INFLIGHT`; the system also caps connections
+   at `MAX_PEER_CONNECTIONS`. Each worker is sequential and therefore permits
+   one in-flight request per peer.
+4. While waiting for the requested `PIECE`, process incoming `HAVE` messages as
+   peer availability updates. Unexpected message types fail that transfer.
+5. Write each piece through `StorageManager.write_chunk()`. A chunk becomes
+   `VERIFIED` only after storage validates its length and SHA-256. Broadcast
+   `HAVE` for the verified index to other active peers.
+6. Retry a failed chunk on its current peer up to `max_retries` with exponential
+   delay. The reservation remains in-flight during retries. On exhausted retry
+   or peer failure, release it and retire that peer; another active peer may then
+   receive the chunk.
+7. When no peer can supply remaining chunks, raise `NoAvailablePeersError`
+   rather than waiting indefinitely. Once all chunks are verified, finalize the
+   file through `StorageManager.finalize()`.
+8. On cancellation or any terminal error, release peer reservations and close
+   all owned connections before propagating the error.
+
+## 7. Concurrency & State Ownership Rules
 
 1. **Tracker Registry:** Owned strictly by Tracker service instance.
-2. **Local Chunk Status/Bitfield:** Owned by `DownloadScheduler`. Connection handlers read/query via thread-safe async interfaces.
+2. **Local Chunk Status and Peer Availability:** Owned by `DownloadScheduler`. Its methods are synchronous; state is not protected for cross-thread access.
 3. **Per-Connection State:** Remote bitfield and active in-flight requests owned by the individual connection session handler.
-4. **Chunk Reservation (`IN_FLIGHT`):** A chunk index is marked `IN_FLIGHT` synchronously *before* an `await` point to avoid duplicate fetching across concurrent peer tasks.
-5. **Task Cleanup:** All network tasks use `asyncio.TaskGroup` or tracked task sets with timeouts. No orphan tasks or leaked sockets.
+4. **Chunk Reservation (`IN_FLIGHT`):** `reserve_next()` changes the chunk state synchronously before the worker awaits network I/O, preventing another scheduler user from reserving that chunk.
+5. **Worker and Coordinator:** `DownloadWorker` owns one connection's request loop; `SwarmDownloader` owns the supplied connected peers and coordinates at most one outstanding request per peer.
+6. **Storage verification:** Storage is required. The scheduler is marked verified only after the piece has passed `StorageManager.write_chunk()`; complete-file validation and atomic publish are delegated to `StorageManager.finalize()`.
+7. **Failure and shutdown:** Retry limits are finite (default 3 attempts with a 0.05-second base delay). Failed peers are removed from the active set, reservations are released, and cancellation propagates after cleanup. The scheduler and storage manager are synchronous and intended to be used on the same event loop by this coordinator.
 
----
+## 8. Testing & Measurement Architecture
 
-## 7. Testing & Measurement Architecture
-
-- **Unit Tests:** Pure logic (codec, manifest validation, path safety, scheduler decisions, fake clock expiry).
-- **Integration Tests:** Loopback TCP socket connections (`127.0.0.1` on port `0`), ephemeral ports, FastAPI `TestClient`/ASGI transport.
-- **End-to-End Tests:** Loopback multi-peer swarms downloading real files, asserting bit-for-bit file SHA-256 equivalence.
+- **Unit Tests:** Pure logic and focused worker tests (codec, manifest validation, path safety, scheduler decisions, retry and release behavior, fake clock expiry).
+- **Integration Tests:** Loopback TCP connections (`127.0.0.1` on ephemeral ports) cover concurrent multi-peer downloads, storage finalization, corrupt-peer failover, disconnect reassignment, HAVE broadcasts, cancellation, and unavailable chunks.
+- **End-to-End Tests:** Full tracker discovery, seeder, and multiple leecher workflows remain Milestone 7.
 - **Benchmark Harness:** Standard CSV dataset generator and Matplotlib plotting scripts comparing client-server vs P2P runs under bandwidth limits.

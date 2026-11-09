@@ -11,7 +11,7 @@ This document outlines the small, testable implementation milestones for the P2P
 - [x] **Milestone 3: Manifest Engine & Storage Integrity** (**COMPLETED - TESTED** - 2026-10-15)
 - [x] **Milestone 4: Tracker HTTP Control Plane** (**COMPLETED - TESTED** - 2026-11-03)
 - [x] **Milestone 5: Peer TCP Connection & Handshake Engine** (**COMPLETED - TESTED** - 2026-11-05)
-- [ ] **Milestone 6: Download Scheduler & Swarm Orchestration** (PLANNED)
+- [x] **Milestone 6: Download Scheduler & Swarm Orchestration** (**COMPLETED - TESTED** - 2026-11-09)
 - [ ] **Milestone 7: End-to-End Swarm Integration & Seeder CLI** (PLANNED)
 - [ ] **Milestone 8: Client-Server Baseline & Performance Benchmarking** (PLANNED)
 
@@ -91,15 +91,21 @@ This document outlines the small, testable implementation milestones for the P2P
 
 ---
 
-### Milestone 6: Download Scheduler & Swarm Orchestration
+### Milestone 6: Download Scheduler & Swarm Orchestration (COMPLETED - TESTED)
 - **Goal:** Chunk selection policy, chunk reservation (`IN_FLIGHT`), parallel piece requests, retries across peers, HAVE broadcasts, and graceful cancellation.
 - **Deliverables:**
   - `src/p2p/peer/scheduler.py` (DownloadScheduler for missing vs in-flight vs verified chunks).
-  - `src/p2p/peer/downloader.py` (worker loop requesting pieces and passing to storage).
-- **Acceptance Criteria:**
-  - Parallel downloading across multiple peers without duplicate in-flight requests.
-  - Slow or disconnecting peers release in-flight chunks for reassignment to another peer.
-  - Received verified chunks trigger `HAVE` broadcasts to all connected peers.
+  - `src/p2p/peer/downloader.py` (`DownloadWorker` and `SwarmDownloader`).
+  - `tests/unit/test_scheduler.py` (scheduler, worker, bounds, retries, and cancellation coverage).
+  - `tests/integration/test_downloader_loopback.py` (real TCP transfer, HAVE, failover, and cleanup coverage).
+- **Acceptance criteria (verified):**
+  - Seeded random selection among a peer's available missing chunks; reservations prevent duplicate in-flight work.
+  - Concurrent downloads across connected peers, bounded by `MAX_PEER_CONNECTIONS` and `MAX_GLOBAL_INFLIGHT`; at most one request per peer is in flight.
+  - Received `HAVE` updates peer availability. Verified stored chunks are broadcast with `HAVE` to other active peers.
+  - Chunk length/hash failures, protocol failures, and disconnects release reservations; exhausted peers are retired so another peer can retry missing chunks.
+  - Cancellation releases in-flight reservations, closes owned connections, and propagates `CancelledError`.
+  - No available peer results in `NoAvailablePeersError`; complete downloads pass whole-file verification and atomic finalization.
+- **Verification on 2026-11-09:** `.\.venv\Scripts\python.exe -m pytest -ra` — 273 passed (one upstream Starlette/httpx deprecation warning); the focused scheduler/downloader test command in `docs/testing.md` — 20 passed with 90% statement coverage for `downloader.py`; the five loopback tests passed in each of five consecutive runs. `ruff check .`, `ruff format --check src/p2p tests`, and `mypy src/p2p tests` passed. Exact commands/results are in `docs/project-status.md`.
 
 ---
 

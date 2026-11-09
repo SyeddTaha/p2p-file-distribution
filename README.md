@@ -2,18 +2,19 @@
 
 A Python 3.12+ project for a BitTorrent-style Peer-to-Peer (P2P) file distribution system.
 
-The project is being developed in milestones. Milestones 1 through 5 (Foundation,
-Wire Framing Codec, Manifest & Storage Integrity, Tracker Control Plane, and Peer
-TCP Connection Engine) are implemented and tested. Download scheduling, end-to-end
-transfers, and benchmarking remain planned as tracked in the
-[project status](docs/project-status.md).
+The project is being developed in milestones. Milestones 1 through 6 are tested.
+Milestone 6 provides bounded downloads from already-connected peers, storage
+verification, retries/failover, HAVE updates, and cancellation cleanup. Tracker
+discovery, CLI workflows, and full tracker-plus-swarm end-to-end testing remain
+Milestone 7 work. See the [project status](docs/project-status.md) for current
+scope and verification.
 
 ---
 
 ## 1. Project Overview & Architecture
 
-- **Implemented:** Length-prefixed TCP framing and message codecs (`HANDSHAKE`, `BITFIELD`, `REQUEST`, `PIECE`, `HAVE`); FastAPI Tracker HTTP control plane (`/announce`, `/swarms/{id}/peers`, `/health`) with in-memory registry, stale-peer expiry, and monotonic clock injection; v1 manifest creation, validation, atomic JSON output, canonical Swarm IDs, safe destination paths, verified chunk storage, and atomic file finalization; peer TCP connection engine (`PeerConnection` and `PeerServer`) with state machine, handshake/bitfield exchange, range checks, and socket timeouts.
-- **Planned:** Download scheduler with chunk reservation (`IN_FLIGHT`) and retries (Milestone 6), end-to-end CLI & swarm integration (Milestone 7), and controlled benchmark harness (Milestone 8).
+- **Implemented and tested:** Length-prefixed TCP framing and message codecs (`HANDSHAKE`, `BITFIELD`, `REQUEST`, `PIECE`, `HAVE`); FastAPI Tracker HTTP control plane (`/announce`, `/swarms/{id}/peers`, `/health`) with in-memory registry and stale-peer expiry; v1 manifest creation/validation and verified chunk storage; peer TCP connection engine; Milestone 6 scheduler and `SwarmDownloader` for bounded concurrent transfers across already-connected peers, storage verification, retries, peer failover, HAVE broadcast/update, and cancellation cleanup.
+- **Planned:** Tracker-driven peer discovery, CLI workflows, and full tracker-plus-multi-leecher end-to-end transfer (Milestone 7); controlled benchmark harness (Milestone 8).
 
 ---
 
@@ -33,14 +34,14 @@ transfers, and benchmarking remain planned as tracked in the
 │   ├── experiments.md
 │   └── project-status.md
 ├── src/p2p/          # Current application package
-│   ├── tracker/      # Minimal health endpoint; swarm tracking is planned
-│   ├── peer/         # Planned peer networking and scheduler components
+│   ├── tracker/      # Tracker HTTP control plane and swarm registry
+│   ├── peer/         # Peer networking, download scheduler, worker and coordinator
 │   ├── protocol/     # Implemented wire framing codec and message definitions
 │   ├── storage/      # Implemented manifest validation and verified file storage
 │   └── config.py     # System constants, defaults, and timeouts
 ├── tests/            # Automated test suite
-│   ├── unit/         # Codec, manifest, storage, and path safety unit tests
-│   ├── integration/  # No integration tests currently checked in
+│   ├── unit/         # Codec, manifest, storage, scheduler, and worker unit tests
+│   ├── integration/  # Tracker API and peer loopback tests
 │   └── e2e/          # Planned full multi-peer transfer tests
 ├── pyproject.toml    # Dependencies and tool configurations (pytest, ruff, mypy)
 ├── requirements.txt  # Quick teammate dependency requirements file
@@ -81,8 +82,8 @@ pytest
 # Run linting checks
 ruff check .
 
-# Check formatting for implemented protocol and storage code/tests
-ruff format --check src/p2p/protocol src/p2p/storage tests/unit/test_protocol.py tests/unit/test_storage.py
+# Check formatting across implemented source and tests
+ruff format --check src/p2p tests
 
 # Run static type checking
 mypy src/p2p tests
@@ -92,15 +93,15 @@ mypy src/p2p tests
 
 ## 5. Active Phase & Documentation Status
 
-- **Current active phase:** Milestone 6 — Download Scheduler & Swarm Orchestration is **Planned / Next Up**.
+- **Current active phase:** Milestone 7 — End-to-End Swarm Integration & Seeder CLI.
 - **Completed milestones:**
   - Milestone 1 — Project Foundation & Tooling Setup
   - Milestone 2 — Wire Framing Codec & Protocol Messages
   - Milestone 3 — Manifest Engine & Storage Integrity
   - Milestone 4 — Tracker HTTP Control Plane
   - Milestone 5 — Peer TCP Connection Engine
-  See the [implementation plan](docs/implementation-plan.md).
-- **Latest verification (2026-11-05):** `pytest` — 253 passed with one Starlette/httpx deprecation warning; `ruff check .` — passed; `mypy src/p2p tests` — passed (29 source files); `ruff format --check src/p2p tests` — passed. See the [project status](docs/project-status.md) for full test logs.
+  - Milestone 6 — Download Scheduler & Swarm Orchestration
+- **Latest verification (2026-11-09):** `pytest -ra` — 273 passed with one Starlette/httpx deprecation warning; `ruff check .`, `ruff format --check src/p2p tests`, and `mypy src/p2p tests` — passed. The focused downloader suite reports 90% statement coverage. See the [project status](docs/project-status.md) for exact commands and remaining Milestone 7 scope.
 - **AI guidance:** [AGENTS.md](AGENTS.md)
 - **Architecture overview:** [docs/architecture.md](docs/architecture.md)
 - **Protocol specification:** [docs/protocol.md](docs/protocol.md)

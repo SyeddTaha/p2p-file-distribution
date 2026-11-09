@@ -1,6 +1,6 @@
 # Project Status & Team Workflow Tracking
 
-> Last updated: 2026-11-05. Milestone 5 (Peer TCP Connection Engine) completed, verified, and tested.
+> Last updated: 2026-11-09. Milestone 6 scheduler and bounded connected-peer orchestration are implemented and tested; Milestone 7 is next.
 
 ---
 
@@ -13,7 +13,7 @@
 | **Milestone 3** | **Manifest Engine & Storage Integrity** | **TESTED** | 2026-10-15 | Full `pytest` (105 passed), `ruff check .`, `mypy src/p2p`, targeted format check passed |
 | **Milestone 4** | **Tracker HTTP Control Plane** | **TESTED** | 2026-11-03 | 116 Milestone 4 tests passed; targeted Ruff, formatting, and Mypy passed |
 | **Milestone 5** | **Peer TCP Connection Engine** | **TESTED** | 2026-11-05 | 32 Milestone 5 tests passed (26 unit, 6 integration), full suite 253 passed, Ruff and Mypy clean |
-| **Milestone 6** | **Download Scheduler & Orchestrator** | PLANNED | To Do | Chunk reservation (`IN_FLIGHT`), retries, HAVE broadcasts |
+| **Milestone 6** | **Download Scheduler & Orchestrator** | **TESTED** | 2026-11-09 | Full suite 273 passed; 20 focused tests, 90% downloader coverage; 5 loopback tests passed in 5 consecutive runs |
 | **Milestone 7** | **End-to-End Swarm & Seeder CLI** | PLANNED | To Do | Full multi-peer loopback file distribution E2E tests |
 | **Milestone 8** | **Benchmarking & Baseline Mode** | PLANNED | To Do | Client-Server vs P2P comparison, CSV dataset, plots |
 
@@ -71,9 +71,9 @@ mypy src/p2p
 | Peer | Handshake & Bitfield exchange | **Tested** | Yes | Bi-directional exchange, spare bit verification, self-connection rejection |
 | Peer | Steady-state message transfer | **Tested** | Yes | `REQUEST`, `PIECE`, `HAVE` with range checks and unsolicited piece rejection |
 | Peer | Seeding (serving verified chunks) | Planned | No | Milestone 7 CLI / worker integration |
-| Peer | Downloading with scheduling | Planned | No | Milestone 6 |
-| Peer | Retries, peer failure handling, cancellation | Planned | No | Milestone 6 |
-| Testing | Unit & integration tests | **Tested** | Yes | Full project suite: 253 passed cleanly; Milestone 5 suite: 32 passed (26 unit, 6 integration) |
+| Peer | Scheduler and connected-peer download orchestration | **Tested** | Yes | Bounded parallel peer requests, synchronous reservations, storage verification, failover, HAVE updates, and cancellation cleanup |
+| Peer | Download completion and no-peer failure | **Tested** | Yes | `StorageManager.finalize()` verifies/publishes complete files; `NoAvailablePeersError` is raised for unresolved chunks |
+| Testing | Unit & integration tests | **Tested** | Yes | Latest full suite: 273 passed; focused scheduler/downloader tests: 20 passed, 90% statement coverage for `downloader.py`; loopback tests repeated 5 times |
 | Benchmarking | Baseline mode & runner | Planned | No | Milestone 8 |
 
 ---
@@ -89,13 +89,14 @@ mypy src/p2p
 | `docs/protocol.md` | Created | Wire format specification, message codes, state machine |
 | `docs/manifest-format.md` | Updated | JSON schema, limits, Swarm ID, safe paths, storage workflow |
 | `docs/manifest.md` | Created | Linked summary |
-| `docs/implementation-plan.md` | Updated | Detailed milestones 1 through 8 (Milestones 1-5 completed) |
-| `docs/testing.md` | Created | Pyramid, scenario matrix, test runner guide |
+| `docs/implementation-plan.md` | Updated | Milestones 1-6 tested; Milestone 7 is next |
+| `docs/testing.md` | Updated | Scenario matrix and verified Milestone 6 unit/integration coverage |
+| `docs/adr/0004-download-scheduling-and-failover.md` | Created | Seeded selection, per-peer concurrency, retry, and failover policy |
 | `docs/experiments.md` | Created | Hypotheses, control variables, CSV format |
 | `docs/adr/0001-project-structure-and-stack.md` | Created | Stack & directory layout |
 | `docs/adr/0002-wire-protocol-framing-and-limits.md` | Created | Framing format & security bounds |
 | `docs/adr/0003-manifest-v1-and-storage-policy.md` | Created | Manifest v1, empty-file and storage policies |
-| `docs/project-status.md` | Updated | Milestone 5 completed & verified state |
+| `docs/project-status.md` | Updated | Milestone 6 tested state, current verification, and Milestone 7 boundary |
 
 ---
 
@@ -123,14 +124,20 @@ mypy src/p2p
 | 2026-11-05 | Full project | `.\.venv\Scripts\ruff.exe check .` | **Passed** (All checks passed) |
 | 2026-11-05 | Full project | `.\.venv\Scripts\ruff.exe format --check src/p2p tests` | **Passed** (29 files already formatted) |
 | 2026-11-05 | Full project | `.\.venv\Scripts\mypy.exe src\p2p tests` | **Passed** (No issues found in 29 source files) |
+| 2026-11-09 | Milestone 6 | `.\.venv\Scripts\python.exe -m pytest tests\unit\test_scheduler.py tests\integration\test_downloader_loopback.py --cov=p2p.peer.downloader --cov-report=term-missing -ra` | **Passed** (20 passed; `downloader.py` 90% statement coverage) |
+| 2026-11-09 | Milestone 6 stability | `.\.venv\Scripts\python.exe -m pytest tests\integration\test_downloader_loopback.py -q` (5 consecutive runs) | **Passed** (5 tests per run; 25 total test executions) |
+| 2026-11-09 | Full project | `.\.venv\Scripts\python.exe -m pytest -ra` | **Passed** (273 passed; one upstream Starlette/httpx deprecation warning) |
+| 2026-11-09 | Full project | `.\.venv\Scripts\python.exe -m ruff check .` | **Passed** (All checks passed) |
+| 2026-11-09 | Full project | `.\.venv\Scripts\python.exe -m ruff format --check src/p2p tests` | **Passed** (33 files already formatted) |
+| 2026-11-09 | Full project | `.\.venv\Scripts\python.exe -m mypy src/p2p tests` | **Passed** (No issues found in 33 source files) |
 
 ## 6. Open Issues & Known Limitations
 
 - Milestone 3 storage operations are synchronous; async callers must offload large file work and serialize access to a shared `StorageManager`.
 - Full test runs emit one upstream Starlette/httpx deprecation warning; it does not fail tests.
-- Download scheduling logic, chunk reservation, parallel downloading, and retries are deferred to Milestone 6.
-- End-to-end swarm transfers and CLI are deferred to Milestone 7.
+- Milestone 6 accepts already-connected peers; tracker-driven discovery, CLI operations, and a complete tracker-plus-multiple-leecher transfer remain Milestone 7 scope.
+- Each peer worker currently has one outstanding request at a time; per-peer pipelining is not implemented.
 
 ## 7. Decisions Needed
 
-- None for Milestone 5. Concurrency bounds and connection state machine follow the approved wire protocol in `docs/protocol.md` and ADR 0002.
+- No outstanding Milestone 6 decisions. Milestone 7 must integrate tracker discovery and provide the complete CLI/E2E workflow.
