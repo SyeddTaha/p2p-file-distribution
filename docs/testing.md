@@ -43,11 +43,14 @@ Testing network applications requires strict isolation, determinism, and clean r
 | **Tracker Service** | Peer Names & Hosts | RFC 1123 label/hostname length edges, optional trailing dot, IPv4/IPv6, and invalid hostname syntax. |
 | **Tracker Service** | Stale Peer Expiry | Fake-clock boundary at exactly 90 seconds and just beyond; eviction during announce/listing and empty-swarm cleanup. |
 | **Tracker Service** | HTTP Peer Listing | `GET /swarms/{swarm_id}/peers` response fields, malformed ID rejection, unknown valid swarm response, and registry dependency isolation. |
-| **Peer Connection** | TCP Handshake Engine | Valid handshake exchange, version mismatch rejection, wrong swarm ID rejection, unsolicited piece rejection. |
+| **Peer Connection** | TCP Handshake Engine | Valid handshake exchange, version/swarm rejection, malformed and unsolicited messages, IPv6 loopback when available, inbound cap, simultaneous connection pressure, capacity release, failed-handshake cleanup, and socket cleanup when cancelled during handshake. |
 | **Download Scheduler** | Chunk Reservation | `IN_FLIGHT` reservation prevention of duplicate requests across tasks, peer failure release of chunks. |
 | **Download Worker** | Async Fetch / Retry Flow | Unit tests cover storage-verified chunks, retries, retained reservations during retries, retry exhaustion, HAVE updates while awaiting PIECE, unexpected REQUEST, cancellation, and completion tracking. |
 | **Swarm Downloader** | Multi-Peer Orchestration | Loopback tests cover concurrent peer requests, storage finalization, HAVE broadcasts, corrupt-peer and disconnect failover, no available chunks, and cancellation cleanup. |
-| **End-to-End (Milestone 7)** | Tracker-Driven File Transfer | Full tracker + seeder + multiple leechers and CLI workflow; not implemented in Milestone 6. |
+| **SwarmPeer** | Tracker Lifecycle & Serving | Seeder file/manifest match, startup rollback when server shutdown fails, verified-only chunk serving, started/heartbeat/completed/stopped announcements, empty and partially unavailable discovery, later-candidate fallback, duplicate filtering, shared connection capacity, discovery cancellation cleanup, concurrent-close cleanup, and heartbeat cancellation. |
+| **PeerServer** | Listener Shutdown | Active loopback connections and handler tasks are closed and awaited during shutdown. |
+| **CLI** | Four Command Entry Point | Parser and dispatch for tracker-start, create-manifest, seed-file, and download-file; expected no-peer download failures exit nonzero with a useful message and no traceback; project script resolves to `p2p.cli:main`. |
+| **End-to-End (Milestone 7)** | Tracker-Driven File Transfer | In-process FastAPI tracker, real loopback TCP, one seeder and three concurrent leechers; byte equality, whole-file SHA-256, HAVE exchange, tracker lifecycle, and cleanup. A staged relay test proves a completed leecher serves nonzero PIECE payload bytes to a later leecher after the original seeder is removed. |
 
 ---
 
@@ -92,3 +95,150 @@ for ($i = 1; $i -le 5; $i++) {
     if ($LASTEXITCODE -ne 0) { throw "Loopback test run $i failed" }
 }
 ```
+
+### Milestone 7 verification
+
+Run the CLI, peer lifecycle, peer server, existing downloader, and E2E tests:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\unit\test_cli.py tests\unit\test_peer_connection.py tests\unit\test_swarm_peer.py tests\integration\test_peer_loopback.py tests\integration\test_downloader_loopback.py tests\unit\test_scheduler.py tests\e2e\test_full_transfer.py -q
+```
+
+Run only the full swarm end-to-end transfer:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\e2e\test_full_transfer.py -q
+```
+
+The E2E tests use FastAPI `ASGITransport` for the tracker, ephemeral loopback
+TCP ports for real peers, and a temporary directory for all files. The tracker
+is in-process; these tests do not spawn separate OS processes. The final
+interactive Windows smoke test below separately verified process startup,
+transfer integrity, Ctrl+C shutdown, tracker deregistration, and process cleanup.
+Tests for the no-available-chunks failure configure
+`availability_timeout=0.01` so they exercise the bounded timeout without
+waiting for the production default of 15 seconds.
+
+### Milestone 7 interactive Windows smoke test
+
+This manual test uses three PowerShell terminals for the tracker, seeder, and
+leecher, plus a fourth PowerShell prompt for verification. Run from the
+repository root. It creates a deterministic 1 MiB payload, seeds it, downloads
+it into a separate directory, compares bytes and SHA-256, then checks shutdown
+and tracker state. The recorded run on 2026-11-17 used swarm ID
+`ef3fbb61b390ba263b2503a97cb07209033d88f6b2df69f94af3ec3ca3135385`.
+
+In Terminal 1, create the payload and manifest, then start the tracker. Use
+fresh paths; the guard below refuses to overwrite an existing payload.
+
+```powershell
+$testFile = ".\m7-smoke-payload.bin"
+if (Test-Path -LiteralPath $testFile) {
+    throw "Test file already exists. Refusing to overwrite it."
+}
+if (Test-Path -LiteralPath ".\m7-smoke-payload.manifest.json") {
+    throw "Manifest already exists. Refusing to overwrite it."
+}
+
+$bytes = New-Object byte[] (1MB)
+for ($i = 0; $i -lt $bytes.Length; $i++) {
+    $bytes[$i] = [byte](($i * 31 + 17) % 256)
+}
+
+[System.IO.File]::WriteAllBytes(
+    (Join-Path (Get-Location) "m7-smoke-payload.bin"),
+    $bytes
+)
+
+.\.venv\Scripts\python.exe -m p2p.cli create-manifest .\m7-smoke-payload.bin --chunk-size 262144 --output .\m7-smoke-payload.manifest.json
+.\.venv\Scripts\python.exe -m p2p.cli tracker-start --host 127.0.0.1 --port 8000
+```
+
+In Terminal 2, start the seeder:
+
+```powershell
+.\.venv\Scripts\python.exe -m p2p.cli seed-file .\m7-smoke-payload.manifest.json .\m7-smoke-payload.bin --tracker-url http://127.0.0.1:8000
+```
+
+In Terminal 3, use a new download directory and start the leecher:
+
+```powershell
+$downloadDir = ".\m7-smoke-downloads-20261117-1333"
+if (Test-Path -LiteralPath $downloadDir) {
+    throw "Download directory already exists. Choose a fresh name."
+}
+
+.\.venv\Scripts\python.exe -m p2p.cli download-file .\m7-smoke-payload.manifest.json --download-dir $downloadDir --tracker-url http://127.0.0.1:8000
+```
+
+If you choose another download directory name, use that same path in the
+verification command below.
+
+Wait for `Downloaded and verified` and `Continuing to seed`. While the leecher
+is still running, compare the original and downloaded bytes and hashes from
+Terminal 4 in the repository root:
+
+```powershell
+$src = Join-Path (Get-Location) "m7-smoke-payload.bin"
+$dst = Join-Path (Get-Location) "m7-smoke-downloads-20261117-1333\m7-smoke-payload.bin"
+$a = [System.IO.File]::ReadAllBytes($src)
+$b = [System.IO.File]::ReadAllBytes($dst)
+
+$bytesMatch = $a.Length -eq $b.Length
+if ($bytesMatch) {
+    for ($i = 0; $i -lt $a.Length; $i++) {
+        if ($a[$i] -ne $b[$i]) {
+            $bytesMatch = $false
+            break
+        }
+    }
+}
+
+$sourceHash = (Get-FileHash -LiteralPath $src -Algorithm SHA256).Hash
+$downloadHash = (Get-FileHash -LiteralPath $dst -Algorithm SHA256).Hash
+"Original bytes:   $($a.Length)"
+"Downloaded bytes: $($b.Length)"
+"Original SHA256:   $sourceHash"
+"Downloaded SHA256: $downloadHash"
+"Byte-for-byte match: $bytesMatch"
+
+if (-not $bytesMatch -or $sourceHash -ne $downloadHash) {
+    throw "Smoke-test file verification failed."
+}
+```
+
+After verification, press Ctrl+C in Terminal 2 and Terminal 3, and wait for
+both commands to return to their PowerShell prompts. While Terminal 1 is still
+running, confirm the peer list is empty:
+
+```powershell
+$swarmId = "ef3fbb61b390ba263b2503a97cb07209033d88f6b2df69f94af3ec3ca3135385"
+$state = Invoke-RestMethod -Uri "http://127.0.0.1:8000/swarms/$swarmId/peers"
+$state | ConvertTo-Json -Depth 5
+if (@($state.peers).Count -ne 0) {
+    throw "Tracker still reports peers in this swarm."
+}
+```
+
+Then press Ctrl+C in Terminal 1. Check that no Python process matching the
+smoke-test commands remains:
+
+```powershell
+$leftovers = Get-CimInstance Win32_Process | Where-Object {
+    $_.Name -in @("python.exe", "pythonw.exe") -and
+    $_.CommandLine -match "m7-smoke-payload|p2p\.cli tracker-start --host 127\.0\.0\.1 --port 8000"
+}
+if ($leftovers) {
+    $leftovers | Select-Object ProcessId, Name, CommandLine
+    throw "Smoke-test Python processes are still running."
+}
+"No smoke-test Python processes remain."
+```
+
+**Recorded result (2026-11-17):** 1,048,576 bytes downloaded; byte-for-byte
+comparison passed; source and destination SHA-256 both equaled
+`042D84D3772B8CC9080A8F388C428C11D88F8566E5A38FDA322FC8EA33492CFC`.
+Seeder, leecher, and tracker returned cleanly after Ctrl+C; the tracker
+returned an empty peer list; the process check found no leftover smoke-test
+Python processes. The generated payload, manifest, and download directory are
+test artifacts and should not be committed.

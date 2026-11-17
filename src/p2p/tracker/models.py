@@ -122,15 +122,42 @@ class AnnounceRequest(BaseModel):
 class PeerInfo(BaseModel):
     """Peer connection descriptor returned in announcement responses."""
 
+    model_config = ConfigDict(extra="forbid", strict=True)
+
     peer_id: str
     host: str
     port: int
+
+    @field_validator("peer_id", mode="before")
+    @classmethod
+    def validate_peer_id(cls, value: object) -> str:
+        if not isinstance(value, str) or not PEER_ID_PATTERN.fullmatch(value):
+            raise ValueError("peer_id must contain 1..64 safe characters")
+        return value
+
+    @field_validator("host", mode="before")
+    @classmethod
+    def validate_host(cls, value: object) -> str:
+        if not isinstance(value, str) or not value or len(value) > 255:
+            raise ValueError("host must be a non-empty address of at most 255 characters")
+        if any(char.isspace() for char in value) or "\x00" in value:
+            raise ValueError("host cannot contain whitespace or NUL bytes")
+        if not (_is_valid_ip(value) or _is_valid_rfc1123_hostname(value)):
+            raise ValueError("host must be an IPv4, IPv6, or RFC 1123 hostname")
+        return value
+
+    @field_validator("port", mode="before")
+    @classmethod
+    def validate_port(cls, value: object) -> int:
+        if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 65535:
+            raise ValueError("port must be an integer in 1..65535")
+        return value
 
 
 class AnnounceResponse(BaseModel):
     """Tracker response to a peer announcement."""
 
-    interval: int = Field(default=DEFAULT_HEARTBEAT_INTERVAL_SEC)
+    interval: int = Field(default=DEFAULT_HEARTBEAT_INTERVAL_SEC, gt=0, strict=True)
     peers: list[PeerInfo] = Field(default_factory=list)
 
 

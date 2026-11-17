@@ -32,6 +32,13 @@ from p2p.protocol import (
 logger = logging.getLogger(__name__)
 
 
+def normalize_socket_host(host: str) -> str:
+    """Remove URI-style brackets from IPv6 literals before socket use."""
+    if host.startswith("[") and host.endswith("]"):
+        return host[1:-1]
+    return host
+
+
 class ConnectionState(enum.Enum):
     """Lifecycle states for a peer TCP connection."""
 
@@ -93,7 +100,7 @@ class PeerConnection:
 
         self._pending_requests: set[int] = set()
         self._write_lock: asyncio.Lock = asyncio.Lock()
-        self._is_closing: bool = False
+        self._close_task: asyncio.Task[None] | None = None
 
     # --------------------------------------------------------------------------
     # Properties
@@ -188,7 +195,7 @@ class PeerConnection:
         """Establish an outbound TCP connection to a peer and optionally perform handshake."""
         try:
             async with asyncio.timeout(connect_timeout):
-                reader, writer = await asyncio.open_connection(host, port)
+                reader, writer = await asyncio.open_connection(normalize_socket_host(host), port)
         except TimeoutError as exc:
             raise ConnectionError(
                 f"Connection to {host}:{port} timed out after {connect_timeout}s"
@@ -213,7 +220,7 @@ class PeerConnection:
         if auto_handshake:
             try:
                 await conn.perform_handshake()
-            except Exception:
+            except BaseException:
                 await conn.close()
                 raise
 
@@ -548,16 +555,20 @@ class PeerConnection:
 
         Idempotent; safe to call multiple times.
         """
-        if self._is_closing:
-            return
-        self._is_closing = True
-        self._state = ConnectionState.CLOSED
-        self._pending_requests.clear()
+        if self._close_task is None:
+            self._state = ConnectionState.CLOSED
+            self._pending_requests.clear()
+            writer = self._writer
+            self._writer = None
+            self._reader = None
+            self._close_task = asyncio.create_task(
+                self._close_writer(writer),
+                name=f"close-connection-{self._my_peer_id}",
+            )
+        await asyncio.shield(self._close_task)
 
-        writer = self._writer
-        self._writer = None
-        self._reader = None
-
+    @staticmethod
+    async def _close_writer(writer: asyncio.StreamWriter | None) -> None:
         if writer is not None:
             try:
                 if not writer.is_closing():

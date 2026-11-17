@@ -37,11 +37,20 @@ To ensure fair comparison between Client-Server baseline and P2P distribution:
 
 ## 4. Dataset & CSV Schema
 
-Raw benchmark data will be saved to `bench/results/experiments.csv`:
+Milestone 8 is planned; no dataset has been collected. When implemented, raw
+benchmark data is intended for `bench/results/experiments.csv`. Keep units
+explicit in field names: rates and throughput are bytes per second, not bits
+per second. Record the runtime environment per observation so results from
+different machines or software versions are not conflated.
 
 ```csv
-experiment_id,run_id,mode,repetition,is_warmup,num_clients,client_id,file_size_bytes,chunk_size_bytes,seeder_upload_cap_bps,completion_time_s,throughput_bps,bytes_uploaded_seeder,bytes_uploaded_peers,success,git_commit
+experiment_id,run_id,mode,repetition,is_warmup,num_clients,client_id,file_size_bytes,chunk_size_bytes,host_os,host_os_version,python_version,cpu_model,logical_cpu_count,network_profile,seeder_upload_limit_bytes_per_s,leecher_upload_limit_bytes_per_s,completion_time_s,download_throughput_bytes_per_s,bytes_uploaded_origin_peer,bytes_uploaded_leecher_peers,total_retry_count,chunk_hash_failure_count,full_file_hash_failure_count,success,failure_reason,git_commit
 ```
+
+`total_retry_count` counts repeated chunk requests, while the two hash-failure
+columns separately record per-chunk and final-file integrity failures. No
+benchmark command or measured result is claimed until the Milestone 8 runner
+and dataset exist and have actually been run.
 
 ---
 

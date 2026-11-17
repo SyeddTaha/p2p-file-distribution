@@ -8,7 +8,16 @@ import pytest
 
 from p2p.peer.connection import ConnectionState, PeerConnection
 from p2p.peer.server import PeerServer
-from p2p.protocol import Bitfield, ConnectionClosed, Have, Piece, ProtocolError, Request
+from p2p.protocol import (
+    Bitfield,
+    ConnectionClosed,
+    Handshake,
+    Have,
+    Piece,
+    ProtocolError,
+    Request,
+    read_message,
+)
 
 SAMPLE_SWARM_ID = "b1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890"
 
@@ -50,6 +59,51 @@ async def test_peer_server_async_context_manager() -> None:
         assert server.listen_port > 0
 
     assert not server.is_running
+
+
+@pytest.mark.asyncio
+async def test_server_shutdown_closes_active_connections_and_handler_tasks() -> None:
+    async def keep_open(connection: PeerConnection) -> None:
+        try:
+            while connection.is_connected:
+                await connection.receive_message()
+        except (ConnectionClosed, ProtocolError):
+            return
+
+    server = PeerServer(
+        host="127.0.0.1",
+        port=0,
+        swarm_id=SAMPLE_SWARM_ID,
+        my_peer_id="shutdown-server",
+        chunk_count=1,
+        local_bitfield=Bitfield.from_indices([0], 1),
+        on_connection=keep_open,
+    )
+    await asyncio.wait_for(server.start(), timeout=1)
+    client: PeerConnection | None = None
+    try:
+        client = await asyncio.wait_for(
+            PeerConnection.connect(
+                "127.0.0.1",
+                server.listen_port,
+                swarm_id=SAMPLE_SWARM_ID,
+                my_peer_id="shutdown-client",
+                my_listen_port=6881,
+                chunk_count=1,
+                local_bitfield=Bitfield.from_indices([], 1),
+            ),
+            timeout=2,
+        )
+        assert server.active_connection_count == 1
+        await asyncio.wait_for(server.stop(), timeout=2)
+        assert server.active_connection_count == 0
+        assert not server._connection_tasks
+        with pytest.raises(ConnectionClosed):
+            await asyncio.wait_for(client.receive_message(), timeout=1)
+    finally:
+        if client is not None:
+            await asyncio.wait_for(client.close(), timeout=1)
+        await asyncio.wait_for(server.stop(), timeout=1)
 
 
 @pytest.mark.asyncio
@@ -206,6 +260,294 @@ async def test_peer_server_handles_rogue_client_gracefully() -> None:
         )
         assert legit_conn.is_connected
         await legit_conn.close()
+
+
+@pytest.mark.asyncio
+async def test_peer_server_rejects_connections_over_configured_limit() -> None:
+    chunk_count = 1
+
+    async def keep_open(connection: PeerConnection) -> None:
+        try:
+            while connection.is_connected:
+                await connection.receive_message()
+        except (ConnectionClosed, ProtocolError):
+            return
+
+    async with PeerServer(
+        host="127.0.0.1",
+        port=0,
+        swarm_id=SAMPLE_SWARM_ID,
+        my_peer_id="limited-server",
+        chunk_count=chunk_count,
+        local_bitfield=Bitfield.from_indices([0], chunk_count),
+        on_connection=keep_open,
+        max_connections=1,
+    ) as server:
+        first = await asyncio.wait_for(
+            PeerConnection.connect(
+                "127.0.0.1",
+                server.listen_port,
+                swarm_id=SAMPLE_SWARM_ID,
+                my_peer_id="first-client",
+                my_listen_port=9001,
+                chunk_count=chunk_count,
+                local_bitfield=Bitfield.from_indices([], chunk_count),
+            ),
+            timeout=3,
+        )
+        try:
+            with pytest.raises((ConnectionClosed, ProtocolError)):
+                await asyncio.wait_for(
+                    PeerConnection.connect(
+                        "127.0.0.1",
+                        server.listen_port,
+                        swarm_id=SAMPLE_SWARM_ID,
+                        my_peer_id="second-client",
+                        my_listen_port=9002,
+                        chunk_count=chunk_count,
+                        local_bitfield=Bitfield.from_indices([], chunk_count),
+                        handshake_timeout=1,
+                    ),
+                    timeout=3,
+                )
+            assert server.active_connection_count == 1
+        finally:
+            await asyncio.wait_for(first.close(), timeout=1)
+
+
+@pytest.mark.asyncio
+async def test_simultaneous_connections_respect_capacity_and_release_slots() -> None:
+    handler_tasks: dict[str, asyncio.Task[None]] = {}
+    handler_changed = asyncio.Event()
+
+    async def keep_open(connection: PeerConnection) -> None:
+        task = asyncio.current_task()
+        assert task is not None
+        assert connection.remote_peer_id is not None
+        handler_tasks[connection.remote_peer_id] = task
+        handler_changed.set()
+        try:
+            while connection.is_connected:
+                await connection.receive_message()
+        except (ConnectionClosed, ProtocolError):
+            return
+
+    chunk_count = 1
+    async with PeerServer(
+        host="127.0.0.1",
+        port=0,
+        swarm_id=SAMPLE_SWARM_ID,
+        my_peer_id="simultaneous-server",
+        chunk_count=chunk_count,
+        local_bitfield=Bitfield.from_indices([0], chunk_count),
+        on_connection=keep_open,
+        max_connections=2,
+    ) as server:
+
+        async def connect(index: int) -> PeerConnection:
+            return await PeerConnection.connect(
+                "127.0.0.1",
+                server.listen_port,
+                swarm_id=SAMPLE_SWARM_ID,
+                my_peer_id=f"simultaneous-client-{index}",
+                my_listen_port=9000 + index,
+                chunk_count=chunk_count,
+                local_bitfield=Bitfield.from_indices([], chunk_count),
+            )
+
+        async def handler_for(peer_id: str) -> asyncio.Task[None]:
+            while peer_id not in handler_tasks:
+                handler_changed.clear()
+                if peer_id in handler_tasks:
+                    break
+                await handler_changed.wait()
+            return handler_tasks[peer_id]
+
+        results = await asyncio.wait_for(
+            asyncio.gather(
+                *(connect(index) for index in range(3)),
+                return_exceptions=True,
+            ),
+            timeout=5,
+        )
+        connected = [result for result in results if isinstance(result, PeerConnection)]
+        rejected = [result for result in results if isinstance(result, Exception)]
+        retried: PeerConnection | None = None
+        try:
+            assert len(results) == 3
+            assert len(connected) == 2
+            assert len(rejected) == 1
+            assert server.active_connection_count == 2
+
+            await asyncio.wait_for(connected[0].close(), timeout=1)
+            handler_task = await asyncio.wait_for(
+                handler_for(connected[0].my_peer_id),
+                timeout=1,
+            )
+            await asyncio.wait_for(handler_task, timeout=1)
+            assert server.active_connection_count == 1
+
+            retried = await asyncio.wait_for(connect(3), timeout=3)
+            assert retried.is_connected
+            assert server.active_connection_count == 2
+        finally:
+            connections_to_close = [*connected]
+            if retried is not None:
+                connections_to_close.append(retried)
+            close_results = await asyncio.wait_for(
+                asyncio.gather(
+                    *(connection.close() for connection in connections_to_close),
+                    return_exceptions=True,
+                ),
+                timeout=2,
+            )
+            assert not any(isinstance(result, BaseException) for result in close_results)
+
+        remaining_handlers = [
+            await asyncio.wait_for(handler_for(connection.my_peer_id), timeout=1)
+            for connection in connected[1:]
+        ]
+        if retried is not None:
+            remaining_handlers.append(
+                await asyncio.wait_for(handler_for(retried.my_peer_id), timeout=1)
+            )
+        await asyncio.wait_for(asyncio.gather(*remaining_handlers), timeout=2)
+        assert server.active_connection_count == 0
+        assert not server._connection_tasks
+
+
+@pytest.mark.asyncio
+async def test_failed_handshake_releases_capacity_and_handler_task() -> None:
+    async def keep_open(connection: PeerConnection) -> None:
+        try:
+            while connection.is_connected:
+                await connection.receive_message()
+        except (ConnectionClosed, ProtocolError):
+            return
+
+    async with PeerServer(
+        host="127.0.0.1",
+        port=0,
+        swarm_id=SAMPLE_SWARM_ID,
+        my_peer_id="failed-handshake-server",
+        chunk_count=1,
+        local_bitfield=Bitfield.from_indices([0], 1),
+        handshake_timeout=1,
+        on_connection=keep_open,
+        max_connections=1,
+    ) as server:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection("127.0.0.1", server.listen_port),
+            timeout=1,
+        )
+        assert isinstance(await asyncio.wait_for(read_message(reader), timeout=1), Handshake)
+        writer.write(b"\x00\x00\x00\x01\xff")
+        await writer.drain()
+        assert await asyncio.wait_for(reader.read(), timeout=1) == b""
+        writer.close()
+        await writer.wait_closed()
+        tasks = tuple(server._connection_tasks)
+        if tasks:
+            await asyncio.wait_for(asyncio.gather(*tasks), timeout=1)
+
+        assert server.active_connection_count == 0
+        assert not server._connection_tasks
+
+        connection = await asyncio.wait_for(
+            PeerConnection.connect(
+                "127.0.0.1",
+                server.listen_port,
+                swarm_id=SAMPLE_SWARM_ID,
+                my_peer_id="after-failure-client",
+                my_listen_port=9001,
+                chunk_count=1,
+                local_bitfield=Bitfield.from_indices([], 1),
+            ),
+            timeout=3,
+        )
+        try:
+            assert connection.is_connected
+            assert server.active_connection_count == 1
+        finally:
+            await asyncio.wait_for(connection.close(), timeout=1)
+
+
+@pytest.mark.asyncio
+async def test_server_reports_cleanup_errors_after_stopping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server = PeerServer(
+        host="127.0.0.1",
+        port=0,
+        swarm_id=SAMPLE_SWARM_ID,
+        my_peer_id="cleanup-error-server",
+        chunk_count=1,
+        local_bitfield=Bitfield.from_indices([0], 1),
+    )
+    await asyncio.wait_for(server.start(), timeout=1)
+    assert server._server is not None
+
+    async def fail_wait_closed() -> None:
+        raise OSError("listener wait failed")
+
+    monkeypatch.setattr(server._server, "wait_closed", fail_wait_closed)
+    with pytest.raises(ExceptionGroup, match="PeerServer cleanup failed") as exc_info:
+        await asyncio.wait_for(server.stop(), timeout=1)
+
+    assert any("listener wait failed" in str(error) for error in exc_info.value.exceptions)
+    assert not server.is_running
+    assert server._server is None
+
+
+@pytest.mark.asyncio
+async def test_bracketed_ipv6_addresses_are_normalized_for_sockets() -> None:
+    probe = None
+    try:
+        probe = await asyncio.start_server(lambda _reader, _writer: None, "::1", 0)
+    except OSError:
+        pytest.skip("IPv6 loopback is unavailable")
+    finally:
+        if probe is not None:
+            probe.close()
+            await probe.wait_closed()
+
+    async def keep_open(connection: PeerConnection) -> None:
+        try:
+            while connection.is_connected:
+                await connection.receive_message()
+        except (ConnectionClosed, ProtocolError):
+            return
+
+    server = PeerServer(
+        host="[::1]",
+        port=0,
+        swarm_id=SAMPLE_SWARM_ID,
+        my_peer_id="ipv6-server",
+        chunk_count=1,
+        local_bitfield=Bitfield.from_indices([0], 1),
+        on_connection=keep_open,
+    )
+    await asyncio.wait_for(server.start(), timeout=1)
+    connection: PeerConnection | None = None
+    try:
+        connection = await asyncio.wait_for(
+            PeerConnection.connect(
+                "[::1]",
+                server.listen_port,
+                swarm_id=SAMPLE_SWARM_ID,
+                my_peer_id="ipv6-client",
+                my_listen_port=6881,
+                chunk_count=1,
+                local_bitfield=Bitfield.from_indices([], 1),
+            ),
+            timeout=3,
+        )
+        assert connection.is_connected
+        assert connection.remote_peer_id == "ipv6-server"
+    finally:
+        if connection is not None:
+            await asyncio.wait_for(connection.close(), timeout=1)
+        await asyncio.wait_for(server.stop(), timeout=2)
 
 
 @pytest.mark.asyncio

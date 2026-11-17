@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -347,6 +347,73 @@ async def test_handshake_timeout() -> None:
 
 
 @pytest.mark.asyncio
+async def test_connect_cancellation_during_handshake_closes_socket() -> None:
+    handshake_received = asyncio.Event()
+    peer_disconnected = asyncio.Event()
+    handler_tasks: set[asyncio.Task[None]] = set()
+    accepted_writers: list[asyncio.StreamWriter] = []
+    handshakes: list[Handshake] = []
+
+    async def stalled_peer(
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> None:
+        task = asyncio.current_task()
+        if task is not None:
+            handler_tasks.add(task)
+        accepted_writers.append(writer)
+        try:
+            message = await read_message(reader)
+            if isinstance(message, Handshake):
+                handshakes.append(message)
+                handshake_received.set()
+            await reader.read()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+            if task is not None:
+                handler_tasks.discard(task)
+            peer_disconnected.set()
+
+    server = await asyncio.start_server(stalled_peer, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    connect_task = asyncio.create_task(
+        PeerConnection.connect(
+            "127.0.0.1",
+            port,
+            swarm_id=SAMPLE_SWARM_ID,
+            my_peer_id="cancelled-client",
+            my_listen_port=6881,
+            chunk_count=1,
+            local_bitfield=Bitfield.from_indices([], 1),
+            handshake_timeout=5,
+        )
+    )
+    try:
+        await asyncio.wait_for(handshake_received.wait(), timeout=1)
+        connect_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(connect_task, timeout=1)
+        await asyncio.wait_for(peer_disconnected.wait(), timeout=1)
+
+        assert len(handshakes) == 1
+        assert connect_task.cancelled()
+        assert not handler_tasks
+    finally:
+        if not connect_task.done():
+            connect_task.cancel()
+            await asyncio.gather(connect_task, return_exceptions=True)
+        for writer in accepted_writers:
+            writer.close()
+        server.close()
+        await asyncio.wait_for(server.wait_closed(), timeout=1)
+        if handler_tasks:
+            for task in handler_tasks:
+                task.cancel()
+            await asyncio.gather(*handler_tasks, return_exceptions=True)
+
+
+@pytest.mark.asyncio
 async def test_handshake_clean_eof_raises_connection_closed() -> None:
     async with connected_peer_pair() as (conn_a, conn_b):
         await conn_b.close()
@@ -573,3 +640,42 @@ async def test_async_context_manager() -> None:
         async with conn_a:
             assert conn_a.state == ConnectionState.AWAIT_HANDSHAKE
         assert conn_a.is_closed
+
+
+@pytest.mark.asyncio
+async def test_concurrent_close_waits_for_socket_cleanup() -> None:
+    writer = MagicMock(spec=asyncio.StreamWriter)
+    writer.is_closing.return_value = False
+    close_started = asyncio.Event()
+    allow_close = asyncio.Event()
+
+    async def delayed_wait_closed() -> None:
+        close_started.set()
+        await allow_close.wait()
+
+    writer.wait_closed = AsyncMock(side_effect=delayed_wait_closed)
+    connection = PeerConnection.accept(
+        reader=MagicMock(spec=asyncio.StreamReader),
+        writer=writer,
+        swarm_id=SAMPLE_SWARM_ID,
+        my_peer_id="closing-peer",
+        my_listen_port=6881,
+        chunk_count=1,
+        local_bitfield=Bitfield.from_indices([], 1),
+    )
+    first_close = asyncio.create_task(connection.close())
+    second_close: asyncio.Task[None] | None = None
+    try:
+        await asyncio.wait_for(close_started.wait(), timeout=1)
+        second_close = asyncio.create_task(connection.close())
+        await asyncio.sleep(0)
+        assert not second_close.done()
+    finally:
+        allow_close.set()
+        tasks = [first_close]
+        if second_close is not None:
+            tasks.append(second_close)
+        await asyncio.wait_for(asyncio.gather(*tasks), timeout=1)
+
+    writer.close.assert_called_once()
+    writer.wait_closed.assert_awaited_once()

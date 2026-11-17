@@ -2,19 +2,21 @@
 
 A Python 3.12+ project for a BitTorrent-style Peer-to-Peer (P2P) file distribution system.
 
-The project is being developed in milestones. Milestones 1 through 6 are tested.
-Milestone 6 provides bounded downloads from already-connected peers, storage
-verification, retries/failover, HAVE updates, and cancellation cleanup. Tracker
-discovery, CLI workflows, and full tracker-plus-swarm end-to-end testing remain
-Milestone 7 work. See the [project status](docs/project-status.md) for current
-scope and verification.
+Milestones 1 through 7 are implemented and tested. Milestone 7 adds tracker-aware
+peer lifecycle management, verified chunk seeding, four CLI commands, and a
+loopback end-to-end transfer with three concurrent leechers plus a staged
+verified leecher-to-leecher transfer. Its final Windows multi-process smoke
+test also verified a 1 MiB download, byte/hash equality, Ctrl+C shutdown, and
+tracker peer removal. See [project status](docs/project-status.md) and the
+[testing guide](docs/testing.md) for results and the reproducible procedure.
+Milestone 8 benchmarking remains planned and has not started.
 
 ---
 
 ## 1. Project Overview & Architecture
 
-- **Implemented and tested:** Length-prefixed TCP framing and message codecs (`HANDSHAKE`, `BITFIELD`, `REQUEST`, `PIECE`, `HAVE`); FastAPI Tracker HTTP control plane (`/announce`, `/swarms/{id}/peers`, `/health`) with in-memory registry and stale-peer expiry; v1 manifest creation/validation and verified chunk storage; peer TCP connection engine; Milestone 6 scheduler and `SwarmDownloader` for bounded concurrent transfers across already-connected peers, storage verification, retries, peer failover, HAVE broadcast/update, and cancellation cleanup.
-- **Planned:** Tracker-driven peer discovery, CLI workflows, and full tracker-plus-multi-leecher end-to-end transfer (Milestone 7); controlled benchmark harness (Milestone 8).
+- **Implemented and tested:** Length-prefixed TCP framing and message codecs (`HANDSHAKE`, `BITFIELD`, `REQUEST`, `PIECE`, `HAVE`); FastAPI Tracker HTTP control plane with in-memory registry and stale-peer expiry; v1 manifest creation/validation and verified chunk storage; bounded peer server and peer connections; scheduler and `SwarmDownloader`; `SwarmPeer` tracker announcements, discovery, seeding, multi-peer downloads, and lifecycle cleanup; CLI and a tracker + seeder + three-leecher loopback E2E test.
+- **Planned:** Controlled client-server baseline and P2P benchmark harness (Milestone 8).
 
 ---
 
@@ -27,6 +29,7 @@ scope and verification.
 ├── docs/             # Technical specifications, ADRs, status, testing guides
 │   ├── adr/          # Architecture Decision Records
 │   ├── architecture.md
+│   ├── cli.md
 │   ├── protocol.md
 │   ├── manifest-format.md  # Implemented v1 format specification
 │   ├── implementation-plan.md
@@ -42,7 +45,7 @@ scope and verification.
 ├── tests/            # Automated test suite
 │   ├── unit/         # Codec, manifest, storage, scheduler, and worker unit tests
 │   ├── integration/  # Tracker API and peer loopback tests
-│   └── e2e/          # Planned full multi-peer transfer tests
+│   └── e2e/          # Tracker + seeder + concurrent leecher transfer tests
 ├── pyproject.toml    # Dependencies and tool configurations (pytest, ruff, mypy)
 ├── requirements.txt  # Quick teammate dependency requirements file
 └── README.md         # Quick start & repository guide
@@ -89,11 +92,25 @@ ruff format --check src/p2p tests
 mypy src/p2p tests
 ```
 
----
+## 5. CLI Quick Start
 
-## 5. Active Phase & Documentation Status
+Install the package in editable mode. Run `create-manifest` once, then start
+the tracker, seeder, and each leecher in separate terminals:
 
-- **Current active phase:** Milestone 7 — End-to-End Swarm Integration & Seeder CLI.
+```powershell
+p2p tracker-start --host 127.0.0.1 --port 8000
+p2p create-manifest .\payload.bin --output .\payload.manifest.json
+p2p seed-file .\payload.manifest.json .\payload.bin --tracker-url http://127.0.0.1:8000
+p2p download-file .\payload.manifest.json --download-dir .\downloads --tracker-url http://127.0.0.1:8000
+```
+
+`seed-file` and `download-file` remain running to serve the swarm and stop on
+Ctrl+C. Distribute the manifest file to downloaders out of band. See the
+[CLI guide](docs/cli.md) for command behavior and options.
+
+## 6. Active Phase & Documentation Status
+
+- **Current state:** Milestone 7 automated verification and the interactive Windows smoke test are complete. Milestone 8 — Client-Server Baseline & Performance Benchmarking — remains planned and has not started.
 - **Completed milestones:**
   - Milestone 1 — Project Foundation & Tooling Setup
   - Milestone 2 — Wire Framing Codec & Protocol Messages
@@ -101,10 +118,12 @@ mypy src/p2p tests
   - Milestone 4 — Tracker HTTP Control Plane
   - Milestone 5 — Peer TCP Connection Engine
   - Milestone 6 — Download Scheduler & Swarm Orchestration
-- **Latest verification (2026-11-09):** `pytest -ra` — 273 passed with one Starlette/httpx deprecation warning; `ruff check .`, `ruff format --check src/p2p tests`, and `mypy src/p2p tests` — passed. The focused downloader suite reports 90% statement coverage. See the [project status](docs/project-status.md) for exact commands and remaining Milestone 7 scope.
+  - Milestone 7 — End-to-End Swarm Integration & Seeder CLI
+- **Latest verification:** See [project status](docs/project-status.md) for the latest full suite, focused E2E checks, CLI verification, and lint/type/format results.
 - **AI guidance:** [AGENTS.md](AGENTS.md)
 - **Architecture overview:** [docs/architecture.md](docs/architecture.md)
 - **Protocol specification:** [docs/protocol.md](docs/protocol.md)
 - **Manifest specification:** [docs/manifest-format.md](docs/manifest-format.md)
 - **Implementation plan:** [docs/implementation-plan.md](docs/implementation-plan.md)
+- **CLI guide:** [docs/cli.md](docs/cli.md)
 - **Project status:** [docs/project-status.md](docs/project-status.md)

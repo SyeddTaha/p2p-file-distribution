@@ -302,10 +302,10 @@ async def test_swarm_downloader_reports_missing_peer_chunks(tmp_path: Path) -> N
     conn = make_connected_peer_connection("peer-a", chunk_count=1)
     conn._remote_bitfield = Bitfield.from_indices([], 1)
     storage = make_storage(tmp_path, b"data", 4)
-    downloader = SwarmDownloader([conn], scheduler, storage)
+    downloader = SwarmDownloader([conn], scheduler, storage, availability_timeout=0.01)
 
     with pytest.raises(NoAvailablePeersError, match="missing chunks"):
-        await downloader.run()
+        await asyncio.wait_for(downloader.run(), timeout=0.5)
 
     assert conn.is_closed
 

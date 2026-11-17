@@ -12,7 +12,7 @@ This document outlines the small, testable implementation milestones for the P2P
 - [x] **Milestone 4: Tracker HTTP Control Plane** (**COMPLETED - TESTED** - 2026-11-03)
 - [x] **Milestone 5: Peer TCP Connection & Handshake Engine** (**COMPLETED - TESTED** - 2026-11-05)
 - [x] **Milestone 6: Download Scheduler & Swarm Orchestration** (**COMPLETED - TESTED** - 2026-11-09)
-- [ ] **Milestone 7: End-to-End Swarm Integration & Seeder CLI** (PLANNED)
+- [x] **Milestone 7: End-to-End Swarm Integration & Seeder CLI** (**COMPLETED - TESTED** - 2026-11-17)
 - [ ] **Milestone 8: Client-Server Baseline & Performance Benchmarking** (PLANNED)
 
 ---
@@ -109,14 +109,27 @@ This document outlines the small, testable implementation milestones for the P2P
 
 ---
 
-### Milestone 7: End-to-End Swarm Integration & Seeder CLI
-- **Goal:** CLI tools for seeding files, launching tracker, downloading files, and full end-to-end integration tests.
+### Milestone 7: End-to-End Swarm Integration & Seeder CLI (COMPLETED - TESTED, 2026-11-17)
+- **Goal:** Connect the existing Tracker, peer TCP server/connection, verified storage, and downloader into complete seed/download lifecycles with a usable CLI and end-to-end validation.
 - **Deliverables:**
-  - `src/p2p/cli.py` (`tracker-start`, `create-manifest`, `seed-file`, `download-file`).
-  - End-to-end integration test suite (`tests/e2e/test_full_transfer.py`).
-- **Acceptance Criteria:**
-  - Full transfer test: 1 tracker + 1 seeder + 3 leechers download file concurrently on loopback.
-  - Final reconstructed file SHA-256 matches original file bit-for-bit.
+  - `src/p2p/peer/client.py` (`SwarmPeer`): verified file serving, peer discovery, outbound connections, start/heartbeat/completed/stopped announcements, HAVE propagation, and cleanup.
+  - `src/p2p/cli.py` and the `p2p` project script: `tracker-start`, `create-manifest`, `seed-file`, and `download-file`.
+  - Bounded inbound connections in `PeerServer`; a peer's inbound and outbound connections share the `MAX_PEER_CONNECTIONS` limit.
+  - `tests/unit/test_cli.py`, `tests/unit/test_swarm_peer.py`, and `tests/e2e/test_full_transfer.py`.
+- **Acceptance criteria (verified):**
+  - Seeder validates the local file against the manifest before announcing or serving; served chunks are checked against the manifest.
+  - Peers announce `started`, periodically heartbeat at the tracker-provided interval, announce `completed` after final verification, and best-effort announce `stopped`.
+  - Leechers discover from `/announce`, connect to live peers within the connection cap, use verified partial chunks for uploading, and process HAVE updates while waiting for other messages.
+  - A full loopback transfer uses one tracker, one seeder, and three concurrent leechers; all outputs match the original bytes and SHA-256.
+  - A staged regression transfer completes one leecher, stops the original seeder, and proves that a later leecher receives nonzero PIECE payload bytes from the completed leecher and verifies the reconstructed file.
+  - Discovery tries later candidates after failures, filters duplicate and already-connected peers, and respects the combined inbound/outbound connection limit.
+  - Cancelling a peer handshake or discovery closes sockets and awaits connector tasks; discovery cancellation restores the shared connection-capacity limit.
+  - Startup rollback closes the HTTP client and signals stopped even if listener shutdown fails, while reporting both startup and cleanup errors.
+  - Concurrent peer and connection close calls await shared cleanup; failed handshakes release inbound capacity; listener shutdown cancels and awaits active handlers before closing sockets and awaiting listener closure.
+  - IPv4 remains supported and bracketed IPv6 literals are normalized for socket use when IPv6 is available.
+  - Tracker lifecycle events, HAVE exchange, stopped peer removal, and heartbeat-task cleanup are asserted.
+  - CLI exposes all four requested commands through both `p2p` and `python -m p2p.cli`.
+- **Verification on 2026-11-17:** `.\.venv\Scripts\python.exe -m pytest -ra` — 304 passed; unit — 270 passed; integration — 32 passed; E2E — 2 passed. The no-peer CLI, startup rollback, and handshake/discovery cancellation regressions are covered. Ruff, source/test format check, Mypy, both CLI help entry points, and `git diff --check` passed. The interactive Windows smoke used a 1 MiB file and verified byte equality, matching SHA-256 (`042D84D3772B8CC9080A8F388C428C11D88F8566E5A38FDA322FC8EA33492CFC`), Ctrl+C exit for tracker/seeder/leecher, an empty tracker peer list, and no matching Python processes. This was one Windows run, not a repeated signal stress test or cross-platform test. See `docs/testing.md` for exact commands and `docs/project-status.md` for the verification log.
 
 ---
 

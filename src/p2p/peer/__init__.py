@@ -1,5 +1,6 @@
 """Peer TCP data plane package."""
 
+from p2p.peer.client import SwarmPeer
 from p2p.peer.connection import ConnectionState, PeerConnection
 from p2p.peer.downloader import (
     DownloadError,
@@ -21,4 +22,5 @@ __all__ = [
     "PeerConnection",
     "PeerServer",
     "SwarmDownloader",
+    "SwarmPeer",
 ]

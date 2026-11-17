@@ -333,8 +333,9 @@ async def test_swarm_downloader_reports_unavailable_chunks_and_closes_peer(
             [connection],
             scheduler,
             StorageManager(manifest, tmp_path / "downloads"),
+            availability_timeout=0.01,
         )
         with pytest.raises(NoAvailablePeersError, match="missing chunks"):
-            await downloader.run()
+            await asyncio.wait_for(downloader.run(), timeout=0.5)
 
     assert connection.is_closed

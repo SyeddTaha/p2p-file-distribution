@@ -11,9 +11,10 @@ from p2p.config import (
     HANDSHAKE_TIMEOUT_SEC,
     IDLE_TIMEOUT_SEC,
     MAX_INFLIGHT_PER_PEER,
+    MAX_PEER_CONNECTIONS,
     STALL_TIMEOUT_SEC,
 )
-from p2p.peer.connection import PeerConnection
+from p2p.peer.connection import PeerConnection, normalize_socket_host
 from p2p.protocol import Bitfield, ConnectionClosed, ProtocolError
 
 logger = logging.getLogger(__name__)
@@ -38,8 +39,15 @@ class PeerServer:
         idle_timeout: float = IDLE_TIMEOUT_SEC,
         stall_timeout: float = STALL_TIMEOUT_SEC,
         max_inflight: int = MAX_INFLIGHT_PER_PEER,
+        max_connections: int = MAX_PEER_CONNECTIONS,
     ) -> None:
-        self._host: Final[str] = host
+        if (
+            not isinstance(max_connections, int)
+            or isinstance(max_connections, bool)
+            or not 0 <= max_connections <= MAX_PEER_CONNECTIONS
+        ):
+            raise ValueError(f"max_connections must be in 0..{MAX_PEER_CONNECTIONS}")
+        self._host: Final[str] = normalize_socket_host(host)
         self._requested_port: Final[int] = port
         self._swarm_id: Final[str] = swarm_id
         self._my_peer_id: Final[str] = my_peer_id
@@ -51,6 +59,7 @@ class PeerServer:
         self._idle_timeout: Final[float] = idle_timeout
         self._stall_timeout: Final[float] = stall_timeout
         self._max_inflight: Final[int] = max_inflight
+        self._max_connections = max_connections
 
         self._server: asyncio.Server | None = None
         self._listen_port: int | None = None
@@ -84,6 +93,16 @@ class PeerServer:
         """Update the bitfield advertised to future incoming connections."""
         bitfield.validate_for_swarm(self._chunk_count)
         self._local_bitfield = bitfield
+
+    def update_max_connections(self, max_connections: int) -> None:
+        """Adjust the inbound connection limit without dropping existing peers."""
+        if (
+            not isinstance(max_connections, int)
+            or isinstance(max_connections, bool)
+            or not 0 <= max_connections <= MAX_PEER_CONNECTIONS
+        ):
+            raise ValueError(f"max_connections must be in 0..{MAX_PEER_CONNECTIONS}")
+        self._max_connections = max_connections
 
     async def start(self) -> int:
         """Start the TCP listener server on host and port.
@@ -120,13 +139,11 @@ class PeerServer:
             return
 
         self._is_running = False
+        cleanup_errors: list[Exception] = []
+        server = self._server
 
-        if self._server is not None:
-            self._server.close()
-            try:
-                await self._server.wait_closed()
-            except Exception:
-                pass
+        if server is not None:
+            server.close()
             self._server = None
 
         # Cancel and wait for all connection handler tasks
@@ -135,16 +152,29 @@ class PeerServer:
                 task.cancel()
 
         if self._connection_tasks:
-            await asyncio.gather(*self._connection_tasks, return_exceptions=True)
+            task_results = await asyncio.gather(
+                *self._connection_tasks,
+                return_exceptions=True,
+            )
+            cleanup_errors.extend(
+                result for result in task_results if isinstance(result, Exception)
+            )
             self._connection_tasks.clear()
 
         # Close all active PeerConnections
         for conn in list(self._active_connections):
             try:
                 await conn.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                cleanup_errors.append(exc)
         self._active_connections.clear()
+        if server is not None:
+            try:
+                await server.wait_closed()
+            except Exception as exc:
+                cleanup_errors.append(exc)
+        if cleanup_errors:
+            raise ExceptionGroup("PeerServer cleanup failed", cleanup_errors)
 
     async def _handle_client(
         self,
@@ -155,6 +185,21 @@ class PeerServer:
         task = asyncio.current_task()
         if task is not None:
             self._connection_tasks.add(task)
+
+        if len(self._active_connections) >= self._max_connections:
+            logger.warning(
+                "Rejecting incoming peer: active connection limit (%d) reached",
+                self._max_connections,
+            )
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except OSError as exc:
+                logger.debug("Error closing rejected peer socket: %s", exc)
+            finally:
+                if task is not None:
+                    self._connection_tasks.discard(task)
+            return
 
         conn = PeerConnection.accept(
             reader=reader,
