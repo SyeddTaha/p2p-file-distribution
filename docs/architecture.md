@@ -10,7 +10,7 @@ This system is a miniature BitTorrent-style Peer-to-Peer (P2P) file distribution
 3. **Storage & Integrity Layer:** Divides files into fixed-size chunks, creates JSON manifests with SHA-256 hashes, handles chunk storage in `.part` files, and reassembles files atomically.
 4. **Download Scheduler & Coordinator:** The scheduler tracks chunk states and peer availability. `SwarmDownloader` coordinates one worker per connected peer, bounded parallel requests, storage verification, retry/failover, HAVE updates, and cleanup.
 5. **SwarmPeer & CLI:** `SwarmPeer` joins tracker lifecycle, listening, discovery, downloading, and verified chunk serving. The `p2p` CLI exposes tracker, manifest, seeder, and downloader commands.
-6. **Test Harness & Benchmark Plan:** Unit, integration, and end-to-end correctness tests are present. Benchmark scripts, CSV collection, and plots are planned for Milestone 8; `bench/` currently contains placeholders only.
+6. **Tests & Benchmarks:** Unit, integration, and end-to-end correctness tests plus `bench/run_experiments.py` for isolated loopback sweeps and `bench/plot_results.py` for trial auditing, summary CSV and headless plots.
 
 ### Terms
 
@@ -186,6 +186,21 @@ either failure. A download with no reachable peers raises the expected
   All baseline clients use this setting; the original seed uploads normally.
   The tracker schema and `is_seeder` completeness meaning are unchanged.
   See [ADR 0006](adr/0006-download-only-baseline.md).
-- **Benchmark Harness:** Milestone 8 is partially implemented: the baseline
-  control exists, but rate limits, metrics, runner, CSV dataset, plots, and
-  benchmark measurements remain planned.
+- **Upload rate limiting:** `TokenBucketRateLimiter` enforces aggregate outbound
+  rate limits across all connections of a peer node, supporting burst controls,
+  proportional waiting for chunk transfers larger than burst capacity, and
+  cancellation safety without token leakage.
+- **Transfer counters:** `SwarmPeer` snapshots verified payload bytes, retry and
+  chunk integrity counters, and duration after successful, failed or cancelled
+  downloads. Upload counters belong to each serving peer.
+  Its optional `scheduler_seed` chooses a reproducible chunk ordering (default
+  zero); the benchmark uses a distinct recorded seed per client, paired by mode.
+- **Benchmark Harness:** The runner owns a fresh FastAPI application/registry,
+  ASGI transports, one origin and N real TCP clients per trial. All clients
+  register before a common download release; completed P2P clients keep serving
+  until the trial ends. Cleanup awaits every peer before removing temporary
+  files. No global tracker dependency override is changed. Analysis groups
+  client rows into complete trials before calculating makespan and throughput;
+  upload totals repeated on client rows are counted once per trial. See
+  [ADR 0008](adr/0008-in-process-benchmark-runner.md) and
+  [experiment methodology](experiments.md) for controls and measurement limits.

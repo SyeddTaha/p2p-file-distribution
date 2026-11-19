@@ -42,8 +42,9 @@ htmlcov/
 # Data & Downloads
 *.part
 bench/results/*.csv
+!bench/results/experiments.csv
 !bench/results/.gitkeep
-bench/plots/*.png
+bench/plots/**
 !bench/plots/.gitkeep
 
 # IDEs & System

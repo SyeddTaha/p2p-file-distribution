@@ -219,3 +219,63 @@ def test_peer_cli_commands_run_and_keep_peer_serving(
     assert calls["downloaded"] is (command == "download-file")
     if command == "download-file":
         assert calls["kwargs"]["upload_enabled"] is not no_upload
+
+
+@pytest.mark.parametrize("command", ["seed-file", "download-file"])
+def test_peer_cli_commands_pass_upload_rate_limit(
+    command: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"abcdefgh")
+    manifest_path = tmp_path / "manifest.json"
+    write_manifest(build_manifest(source, chunk_size=4), manifest_path)
+    calls: dict[str, Any] = {}
+
+    class StubPeer:
+        swarm_id = "a" * 64
+        host = "127.0.0.1"
+        listen_port = 32123
+
+        def __init__(self, *_args: Any, **kwargs: Any) -> None:
+            calls["kwargs"] = kwargs
+
+        async def __aenter__(self) -> Self:
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        async def download(self) -> Path:
+            return source
+
+        async def wait_until_stopped(self) -> None:
+            pass
+
+    monkeypatch.setattr("p2p.cli.SwarmPeer", StubPeer)
+    if command == "seed-file":
+        args = [
+            command,
+            str(manifest_path),
+            str(source),
+            "--tracker-url",
+            "http://tracker.test",
+            "--upload-rate-limit",
+            "1048576",
+        ]
+    else:
+        args = [
+            command,
+            str(manifest_path),
+            "--download-dir",
+            str(tmp_path / "downloads"),
+            "--tracker-url",
+            "http://tracker.test",
+            "--upload-rate-limit",
+            "524288",
+        ]
+
+    main(args)
+    expected_limit = 1048576.0 if command == "seed-file" else 524288.0
+    assert calls["kwargs"]["upload_rate_limit"] == expected_limit

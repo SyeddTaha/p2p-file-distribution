@@ -1,5 +1,40 @@
 # Testing Strategy & Guide
 
+## Milestone 8 runner verification (2026-11-20)
+
+`tests/unit/test_benchmarks.py` covers CLI bounds, append/schema protection,
+seeded file generation and analysis using explicitly synthetic fixtures. It
+checks aggregate throughput arithmetic, sample SD, run-wide upload totals
+counted once, whole-trial failure/warmup/incomplete exclusions, mixed-context
+rejection and headless plot output. Synthetic rows never enter benchmark data.
+
+`tests/integration/test_benchmark_runner.py` exercises both modes at
+N=1,2,4,8 with tiny real TCP transfers, isolated tracker state, warmups and CSV
+output. It checks SHA-256-verified completion, baseline upload accounting,
+recorded seeds, startup/transfer failure, timeout, independent final-hash
+mismatch and external cancellation. All async cases have deadlines, use
+`tmp_path` and check cleanup. `test_benchmark_peer_metrics.py` verifies failed
+and cancelled transfers retain metrics and the configured scheduler seed is
+used. Performance timing is not a correctness assertion.
+
+Run the same checks from the repository root:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -ra
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe -m ruff format --check src/p2p tests bench
+.\.venv\Scripts\python.exe -m mypy src/p2p tests bench
+```
+
+Actual results: **376 passed, 1 warning in 29.03s**; `All checks passed!`;
+`47 files already formatted`; `Success: no issues found in 47 source files`.
+The warning is the existing upstream Starlette/httpx deprecation. Benchmark
+collection commands and measurement limitations live in
+[experiments](experiments.md); a correctness sweep is not performance evidence.
+The benchmark integration file also passed five consecutive executions
+(`python -m pytest tests/integration/test_benchmark_runner.py -q` with the same
+venv Python): 7 passed per run, 35 total test executions, all exited zero.
+
 ## 1. Overview & Principles
 
 Testing network applications requires strict isolation, determinism, and clean resource cleanup.
@@ -52,6 +87,7 @@ Testing network applications requires strict isolation, determinism, and clean r
 | **CLI** | Four Command Entry Point | Parser and dispatch for tracker-start, create-manifest, seed-file, and download-file; expected no-peer download failures exit nonzero with a useful message and no traceback; project script resolves to `p2p.cli:main`. |
 | **End-to-End (Milestone 7)** | Tracker-Driven File Transfer | In-process FastAPI tracker, real loopback TCP, one seeder and three concurrent leechers; byte equality, whole-file SHA-256, HAVE exchange, tracker lifecycle, and cleanup. A staged relay test proves a completed leecher serves nonzero PIECE payload bytes to a later leecher after the original seeder is removed. |
 | **Client-server baseline** | Download-only clients | Three concurrent clients verify the original file while only the origin emits PIECE payloads; no client sends HAVE or PIECE. Partial and completed clients advertise empty BITFIELDs, refuse direct requests from existing/new connections, and clean up listener handlers, heartbeat tasks, and tracker entries. CLI dispatch preserves upload defaults and passes `--no-upload` correctly. |
+| **Upload rate limiter** | Token-bucket bandwidth cap | `TokenBucketRateLimiter` enforces aggregate upload caps across all connections; deterministic fake clock verifies refill math and wait cycles; requests exceeding burst wait proportionally; concurrency contention preserves token invariants; cancellation while waiting does not consume tokens. Integrated into `SwarmPeer` and CLI `--upload-rate-limit`. |
 
 ---
 
@@ -148,6 +184,21 @@ All five tests passed in each of five consecutive runs (25 test executions).
 These tests use an in-process tracker and unthrottled loopback TCP. They verify
 payload sources and integrity, not performance; no benchmark experiment or
 separate multi-process smoke of `--no-upload` was run.
+
+### Token-bucket upload rate limiter verification (2026-11-19)
+
+Run the rate limiter unit suite, CLI options, and SwarmPeer throttling:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/unit/test_rate_limiter.py tests/unit/test_cli.py tests/unit/test_swarm_peer.py -v
+```
+
+This command passed 54 tests (28 rate limiter unit tests, 12 CLI tests, 14 peer
+lifecycle tests). The full suite passed 342 tests with one existing upstream
+Starlette/httpx deprecation warning. Ruff lint (`ruff check .`), source/test
+formatting (41 files), and Mypy (41 files) passed cleanly. Exact commands and
+results are recorded in
+[project status](project-status.md#token-bucket-rate-limiter-verification-2026-11-19).
 
 ### Milestone 7 interactive Windows smoke test
 
