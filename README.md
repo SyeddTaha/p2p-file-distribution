@@ -9,14 +9,17 @@ verified leecher-to-leecher transfer. Its final Windows multi-process smoke
 test also verified a 1 MiB download, byte/hash equality, Ctrl+C shutdown, and
 tracker peer removal. See [project status](docs/project-status.md) and the
 [testing guide](docs/testing.md) for results and the reproducible procedure.
-Milestone 8 benchmarking remains planned and has not started.
+Milestone 8 is partially implemented: download-only baseline controls are
+available; rate limits, metrics, the runner, datasets, and plots remain planned.
 
 ---
 
 ## 1. Project Overview & Architecture
 
 - **Implemented and tested:** Length-prefixed TCP framing and message codecs (`HANDSHAKE`, `BITFIELD`, `REQUEST`, `PIECE`, `HAVE`); FastAPI Tracker HTTP control plane with in-memory registry and stale-peer expiry; v1 manifest creation/validation and verified chunk storage; bounded peer server and peer connections; scheduler and `SwarmDownloader`; `SwarmPeer` tracker announcements, discovery, seeding, multi-peer downloads, and lifecycle cleanup; CLI and a tracker + seeder + three-leecher loopback E2E test.
-- **Planned:** Controlled client-server baseline and P2P benchmark harness (Milestone 8).
+- **Partially implemented:** Client-server baseline controls (`download-file
+  --no-upload`) share the P2P transfer path while disabling client uploads.
+  Controlled rate limits and the benchmark harness remain planned (Milestone 8).
 
 ---
 
@@ -105,12 +108,14 @@ p2p download-file .\payload.manifest.json --download-dir .\downloads --tracker-u
 ```
 
 `seed-file` and `download-file` remain running to serve the swarm and stop on
-Ctrl+C. Distribute the manifest file to downloaders out of band. See the
+Ctrl+C. Use `download-file --no-upload` on every client for the origin-only
+baseline; those clients stay online without serving chunks. Distribute the
+manifest file to downloaders out of band. See the
 [CLI guide](docs/cli.md) for command behavior and options.
 
 ## 6. Active Phase & Documentation Status
 
-- **Current state:** Milestone 7 automated verification and the interactive Windows smoke test are complete. Milestone 8 — Client-Server Baseline & Performance Benchmarking — remains planned and has not started.
+- **Current state:** Milestone 7 automated verification and the interactive Windows smoke test are complete. Milestone 8 — Client-Server Baseline & Performance Benchmarking — is partially implemented: download-only baseline controls exist; rate limits, metrics, runner, datasets, and plots remain planned. No benchmark measurements have been collected.
 - **Completed milestones:**
   - Milestone 1 — Project Foundation & Tooling Setup
   - Milestone 2 — Wire Framing Codec & Protocol Messages

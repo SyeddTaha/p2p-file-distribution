@@ -45,6 +45,11 @@ def build_parser() -> argparse.ArgumentParser:
     downloader.add_argument("--tracker-url", required=True)
     downloader.add_argument("--listen-port", type=int, default=0)
     downloader.add_argument("--host", default="127.0.0.1")
+    downloader.add_argument(
+        "--no-upload",
+        action="store_true",
+        help="disable chunk advertising and uploading for the client-server baseline",
+    )
     return parser
 
 
@@ -80,11 +85,15 @@ async def _run_peer_command(args: argparse.Namespace) -> None:
         args.download_dir,
         host=args.host,
         listen_port=args.listen_port,
+        upload_enabled=not args.no_upload,
     )
     async with peer:
         final_path = await peer.download()
         print(f"Downloaded and verified: {final_path}")
-        logger.info("Continuing to seed swarm %s; press Ctrl+C to stop", peer.swarm_id)
+        if args.no_upload:
+            logger.info("Download-only peer remains online; press Ctrl+C to stop")
+        else:
+            logger.info("Continuing to seed swarm %s; press Ctrl+C to stop", peer.swarm_id)
         await peer.wait_until_stopped()
 
 

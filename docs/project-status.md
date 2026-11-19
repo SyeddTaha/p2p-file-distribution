@@ -1,6 +1,6 @@
 # Project Status & Team Workflow Tracking
 
-> Last updated: 2026-11-17. Milestones 1-7 are implemented and tested; Milestone 8 remains planned.
+> Last updated: 2026-11-19. Milestones 1-7 are implemented and tested; Milestone 8 is partially implemented (download-only baseline controls tested; performance experiments not run).
 
 ---
 
@@ -15,7 +15,7 @@
 | **Milestone 5** | **Peer TCP Connection Engine** | **TESTED** | 2026-11-05 | 32 Milestone 5 tests passed (26 unit, 6 integration), full suite 253 passed, Ruff and Mypy clean |
 | **Milestone 6** | **Download Scheduler & Orchestrator** | **TESTED** | 2026-11-09 | Full suite 273 passed; 20 focused tests, 90% downloader coverage; 5 loopback tests passed in 5 consecutive runs |
 | **Milestone 7** | **End-to-End Swarm & Seeder CLI** | **TESTED** | 2026-11-17 | Full suite 304 passed; staged leecher-to-leecher PIECE transfer; targeted startup/CLI/cancellation regressions; interactive Windows transfer, integrity, shutdown, deregistration, and process-cleanup smoke passed |
-| **Milestone 8** | **Benchmarking & Baseline Mode** | PLANNED | To Do | Client-Server vs P2P comparison, CSV dataset, plots |
+| **Milestone 8** | **Benchmarking & Baseline Mode** | Partially implemented | 2026-11-19 | Download-only baseline controls tested; rate limits, metrics, runner, CSV dataset, and plots remain planned |
 
 ---
 
@@ -76,8 +76,9 @@ mypy src/p2p
 | Peer | Tracker-connected `SwarmPeer` lifecycle | **Tested** | Yes | Started, periodic heartbeat, completed, stopped; startup rollback closes HTTP resources and signals stopped even when server shutdown fails; discovery cancellation closes attempts and restores capacity |
 | CLI | Tracker, manifest, seeder, and downloader commands | **Tested** | Yes | Editable install succeeded; both help entry points verified; invalid inputs and no-peer downloads report nonzero exit codes without tracebacks |
 | End-to-end | Tracker-driven multi-leecher transfer | **Tested** | Yes | In-process FastAPI tracker and real loopback TCP; concurrent and staged relay tests verify a completed leecher serves actual nonzero PIECE bytes to a later leecher after the origin stops |
-| Testing | Unit, integration, and E2E tests | **Tested** | Yes | Latest full suite: 304 passed; unit: 270 passed; integration: 32 passed; E2E: 2 passed; earlier shutdown and E2E regressions repeated 5 times |
-| Benchmarking | Baseline mode & runner | Planned | No | Milestone 8 |
+| Testing | Unit, integration, and E2E tests | **Tested** | Yes | Latest full suite: 310 passed (2026-11-19); one upstream Starlette/httpx warning; see verification log |
+| Benchmarking | Download-only baseline controls | **Tested** | Yes | `SwarmPeer(upload_enabled=False)` / `download-file --no-upload`; three concurrent clients receive only origin payloads; partial and complete clients refuse uploads |
+| Benchmarking | Rate limits, metrics, runner, CSV & plots | Planned | No | Milestone 8; no performance experiments run |
 
 ---
 
@@ -92,16 +93,17 @@ mypy src/p2p
 | `docs/protocol.md` | Created | Wire format specification, message codes, state machine |
 | `docs/manifest-format.md` | Updated | JSON schema, limits, Swarm ID, safe paths, storage workflow |
 | `docs/manifest.md` | Created | Linked summary |
-| `docs/implementation-plan.md` | Updated | Milestone 7 acceptance and verification; Milestone 8 remains planned |
-| `docs/testing.md` | Updated | Scenario matrix and Milestone 7 test commands/results |
+| `docs/implementation-plan.md` | Updated | Milestone 7 acceptance and verification; Milestone 8 baseline controls and remaining work |
+| `docs/testing.md` | Updated | Scenario matrix, baseline correctness coverage, and validation commands/results |
 | `docs/cli.md` | Created | Tracker, manifest, seeder, and downloader CLI reference |
 | `docs/adr/0004-download-scheduling-and-failover.md` | Created | Seeded selection, per-peer concurrency, retry, and failover policy |
 | `docs/adr/0005-integrated-swarm-peer-lifecycle.md` | Created | Tracker/peer lifecycle and per-connection message-reader ownership |
-| `docs/experiments.md` | Created | Hypotheses, control variables, CSV format |
+| `docs/adr/0006-download-only-baseline.md` | Created | Per-peer baseline policy, advertisement suppression, unchanged tracker schema |
+| `docs/experiments.md` | Updated | Hypotheses, controls, implemented baseline mode, planned rate limits and CSV format |
 | `docs/adr/0001-project-structure-and-stack.md` | Created | Stack & directory layout |
 | `docs/adr/0002-wire-protocol-framing-and-limits.md` | Created | Framing format & security bounds |
 | `docs/adr/0003-manifest-v1-and-storage-policy.md` | Created | Manifest v1, empty-file and storage policies |
-| `docs/project-status.md` | Updated | Current Milestone 7 verification, benchmark state, and known limitations |
+| `docs/project-status.md` | Updated | Current validation, partial benchmark implementation, and known limitations |
 
 ---
 
@@ -163,6 +165,28 @@ mypy src/p2p
 | 2026-11-17 | Interactive Windows M7 smoke | `python -m p2p.cli create-manifest`, `tracker-start`, `seed-file`, and `download-file` in separate PowerShell terminals | **Passed** (1,048,576 bytes; byte-for-byte equality; matching SHA-256 `042D84D3772B8CC9080A8F388C428C11D88F8566E5A38FDA322FC8EA33492CFC`; all three processes returned after Ctrl+C) |
 | 2026-11-17 | Interactive Windows M7 smoke | `Invoke-RestMethod http://127.0.0.1:8000/swarms/ef3fbb61b390ba263b2503a97cb07209033d88f6b2df69f94af3ec3ca3135385/peers`; scoped `Get-CimInstance Win32_Process` check | **Passed** (empty peer list; no matching smoke-test Python processes remained) |
 
+### Download-only baseline verification (2026-11-19)
+
+Validation performed on `feat/download-only-baseline`, based on `a7a19a9`.
+Commands used the existing virtual environment; no dependencies were installed.
+
+| Command | Actual result |
+|---|---|
+| `.\.venv\Scripts\python.exe -m pytest` (before edits) | 304 passed, 1 upstream warning in 11.92s |
+| `.\.venv\Scripts\python.exe -m pytest tests/unit/test_cli.py tests/unit/test_scheduler.py tests/integration/test_download_only.py tests/e2e/test_full_transfer.py` (first run) | 2 failed, 30 passed in 9.67s; new unit fixture fed a socket mock instead of the worker inbox; corrected fixture |
+| Same focused command after fixture correction | 32 passed in 3.59s |
+| `.\.venv\Scripts\python.exe -m pytest` (final code) | 310 passed, 1 upstream Starlette/httpx warning in 10.18s |
+| `.\.venv\Scripts\python.exe -m pytest tests/integration/test_download_only.py tests/e2e/test_full_transfer.py` (5 consecutive runs) | 5 passed per run (25 test executions); 3.37s, 3.18s, 3.31s, 3.12s, 2.86s |
+| `.\.venv\Scripts\python.exe -m ruff format src/p2p/cli.py src/p2p/peer/client.py src/p2p/peer/downloader.py tests/e2e/test_full_transfer.py tests/unit/test_cli.py tests/unit/test_scheduler.py tests/integration/test_download_only.py` | 3 files reformatted, 4 left unchanged |
+| `.\.venv\Scripts\python.exe -m ruff check .` | All checks passed! |
+| `.\.venv\Scripts\python.exe -m ruff format --check src/p2p tests` | 39 files already formatted |
+| `.\.venv\Scripts\python.exe -m mypy src/p2p tests` (twice) | Success: no issues found in 39 source files |
+| `.\.venv\Scripts\python.exe -m p2p.cli download-file --help` | Exited 0; listed `--no-upload` and its baseline description |
+| `git diff --check` | Exited 0; no whitespace errors (Git emitted an LF/CRLF conversion notice for `docs/protocol.md`) |
+
+These are correctness checks. No benchmark workload, timing dataset, or
+performance comparison was run.
+
 ## 6. Open Issues & Known Limitations
 
 - Milestone 3 storage operations are synchronous; async callers must offload large file work and serialize access to a shared `StorageManager`.
@@ -170,7 +194,18 @@ mypy src/p2p
 - Automated E2E tests use an in-process tracker. The single interactive Windows smoke run verified Ctrl+C shutdown and stopped-event deregistration for one tracker, seeder, and leecher; repeated signal stress and other operating systems were not exercised.
 - A repository-wide `ruff format --check` flags 17 Markdown files with fenced examples in `.agents/skills/` and `docs/manifest-format.md`; the documented source-and-test command (`ruff format --check src/p2p tests`) passes.
 - Each peer worker currently has one outstanding request at a time; per-peer pipelining is not implemented.
+- Download-only clients retain their listeners and consume connection slots;
+  `is_seeder` still reports local completeness, not upload capability. An
+  origin-only baseline requires every client to disable uploads and exactly one
+  uploading seed. The flag has automated loopback/CLI coverage but has not had
+  a separate multi-process Windows smoke test.
+- No rate limiter, transfer metric counters, workload runner, CSV dataset, or
+  plots exist yet. Unconstrained loopback correctness tests provide no benchmark
+  timing evidence. The raw CSV ignore rule will need adjustment when datasets
+  are introduced, so data supporting claims can be versioned as required.
 
 ## 7. Decisions Needed
 
-- No outstanding Milestone 7 decisions. Milestone 8 benchmarking is next.
+- No outstanding baseline-mode decisions. Next implement a shared per-uploader
+  token bucket (across connections), with deterministic clock tests and
+  cancellation cleanup, then transfer metrics and the experiment runner.

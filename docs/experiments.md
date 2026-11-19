@@ -14,8 +14,16 @@
 ## 2. Experimental Methodology & Control Variables
 
 To ensure fair comparison between Client-Server baseline and P2P distribution:
-- **Identical Codebase:** Client-Server mode uses the exact same protocol, framing, chunking, and hashing logic, but with leechers configured to disable piece uploading (only the origin seed uploads).
-- **Controlled Rate Limits:** Application-level token-bucket rate limiters cap the origin seeder's upload bandwidth to isolate bottleneck behavior on loopback network interfaces.
+- **Identical Codebase (implemented):** Client-Server mode uses the same protocol,
+  framing, chunking, downloader, and hashing logic. Every client sets
+  `SwarmPeer(upload_enabled=False)` (CLI: `download-file --no-upload`); the single
+  origin seed keeps uploading enabled. Clients advertise no chunks, emit no
+  HAVE, and refuse uploads before and after completion. See
+  [ADR 0006](adr/0006-download-only-baseline.md).
+- **Controlled Rate Limits (planned):** Application-level token-bucket rate
+  limiters will cap each uploader's aggregate payload bandwidth across all its
+  connections, with the same origin cap in both modes. Loopback correctness
+  tests currently have no bandwidth bottleneck and support no timing conclusion.
 - **Fixed Workload Parameters:**
   - File Size: `10,485,760` bytes (10 MiB)
   - Chunk Size: `262,144` bytes (256 KiB)
@@ -37,7 +45,7 @@ To ensure fair comparison between Client-Server baseline and P2P distribution:
 
 ## 4. Dataset & CSV Schema
 
-Milestone 8 is planned; no dataset has been collected. When implemented, raw
+Milestone 8 is partially implemented; no dataset has been collected. When implemented, raw
 benchmark data is intended for `bench/results/experiments.csv`. Keep units
 explicit in field names: rates and throughput are bytes per second, not bits
 per second. Record the runtime environment per observation so results from
@@ -56,4 +64,8 @@ and dataset exist and have actually been run.
 
 ## 5. Status & Measurements
 
-- **Status:** **Not run yet.** Workload scripts and baseline flags planned for Milestone 8.
+- **Status:** **Not run.** The download-only baseline control has correctness
+  coverage; no performance experiment or benchmark smoke run has been executed.
+  Per-peer upload limits, metric counters, workload/CSV runner, and plotting
+  scripts remain planned. Next implement and test a shared per-uploader
+  token bucket with deterministic clock-based tests and cancellation handling.

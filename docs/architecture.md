@@ -180,4 +180,12 @@ either failure. A download with no reachable peers raises the expected
 - **Unit Tests:** Pure logic and focused worker tests (codec, manifest validation, path safety, scheduler decisions, retry and release behavior, fake clock expiry).
 - **Integration Tests:** Loopback TCP connections (`127.0.0.1` on ephemeral ports) cover concurrent multi-peer downloads, storage finalization, corrupt-peer failover, disconnect reassignment, HAVE broadcasts, cancellation, and unavailable chunks.
 - **End-to-End Tests:** FastAPI `ASGITransport` plus loopback TCP exercises one seeder and three concurrent leechers, and a staged transfer in which a completed leecher serves verified PIECE bytes to a later leecher after the original seeder stops. The tests verify final file bytes and SHA-256.
-- **Benchmark Harness:** Planned for Milestone 8. No runner, generated CSV dataset, plots, or benchmark measurements are currently implemented.
+- **Client-server baseline:** `SwarmPeer(upload_enabled=False)` keeps verified
+  chunks local, advertises an empty BITFIELD, suppresses HAVE in both the peer
+  and downloader, and refuses incoming chunk requests even after completion.
+  All baseline clients use this setting; the original seed uploads normally.
+  The tracker schema and `is_seeder` completeness meaning are unchanged.
+  See [ADR 0006](adr/0006-download-only-baseline.md).
+- **Benchmark Harness:** Milestone 8 is partially implemented: the baseline
+  control exists, but rate limits, metrics, runner, CSV dataset, plots, and
+  benchmark measurements remain planned.
