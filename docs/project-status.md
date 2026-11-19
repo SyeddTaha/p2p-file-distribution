@@ -109,6 +109,9 @@ mypy src/p2p
 | `docs/adr/0002-wire-protocol-framing-and-limits.md` | Created | Framing format & security bounds |
 | `docs/adr/0003-manifest-v1-and-storage-policy.md` | Created | Manifest v1, empty-file and storage policies |
 | `docs/project-status.md` | Updated | Current validation, measured loopback benchmark state and known limitations |
+| `docs/course-report.md` | Created | Course narrative, four measured figures, tables, reliability evidence and limits; snapshot `886c014` |
+| `docs/demo.md` | Created | 8-10 minute presenter runbook, staged CLI relay, cleanup, automated fallback and smoke commands |
+| `docs/build_course_report.py` | Tested | Standard-library Markdown/HTML export and optional PDF using installed Chrome; generated output ignored |
 
 ---
 
@@ -247,6 +250,44 @@ results and limitations are recorded in `docs/experiments.md`. Generated
 PNGs/derived CSVs remain ignored and are reproducible with the plotting command
 above.
 
+### Course report and demo preparation (2026-11-20)
+
+Prepared the editable report and demo runbook using the committed experiment
+`m8-loopback-20261120` and implementation snapshot `886c014`. Exported a
+self-contained HTML and seven-page PDF containing all four measured plots.
+Every PDF page was rendered with the installed Windows PDF renderer and
+visually inspected; the first export's methodology overflow was corrected.
+No software or dependencies were installed. Generated exports are ignored
+under `output/`; rebuild with `python docs/build_course_report.py --pdf` after
+plot regeneration. Chrome/Chromium must already be installed for PDF export;
+HTML export uses only the standard library.
+
+| Command | Actual result |
+|---|---|
+| `.\.venv\Scripts\python.exe -m bench.plot_results --experiment-id m8-loopback-20261120` | Exited 0; four measured plots regenerated without recollecting or changing raw data |
+| Demo's selected E2E/corruption/disconnect pytest command in `docs/demo.md` | 5 passed in 1.93s |
+| Demo input generator and `python -m p2p.cli create-manifest ...` commands in `docs/demo.md` (venv Python) | Created 1 MiB source and manifest under ignored `downloads/course-demo/` |
+| Tiny runner/plot commands in `docs/demo.md` | Both exited 0; six verified client observations, four smoke plots plus summary/audit |
+| `.\.venv\Scripts\python.exe docs/build_course_report.py --pdf` | Exited 0; `Exported output/pdf/course-report.pdf`; final PDF has seven pages and correct 1/7..7/7 numbering |
+| `.\.venv\Scripts\python.exe -m pytest tests/unit/test_course_report_export.py` | 2 passed in 0.76s; HTML escaping/embedding, page breaks and missing-browser handling |
+| `.\.venv\Scripts\python.exe -m pytest -ra` | 378 passed, 1 upstream warning in 26.17s |
+| `.\.venv\Scripts\python.exe -m ruff check docs/build_course_report.py tests/unit/test_course_report_export.py` | All checks passed! |
+| `.\.venv\Scripts\python.exe -m mypy docs/build_course_report.py tests/unit/test_course_report_export.py` | Success: no issues found in 2 source files |
+| `.\.venv\Scripts\python.exe -m ruff check .` (while concurrent feature work was appearing) | Not clean: issues in unrelated peer/web edits; those files left untouched |
+| `.\.venv\Scripts\python.exe -m ruff format --check src/p2p tests bench docs/build_course_report.py` | Not clean: 5 files in concurrent feature work would be reformatted; 51 already formatted |
+| `.\.venv\Scripts\python.exe -m mypy src/p2p tests bench docs/build_course_report.py` | Not clean: 2 export-attribute errors in `tests/unit/test_benchmarks.py` following concurrent benchmark refactoring |
+
+The four-terminal CLI runbook is prepared but was not newly rehearsed in full
+interactive terminals during this task. Its component CLI/relay behaviors are
+covered by tests and the historical Windows smoke. Do not interpret the tiny
+demo's timing or test runtime as benchmark evidence. The report explicitly
+describes the committed measurement snapshot, not concurrent feature edits.
+
+Documentation gaps corrected: the CLI guide still called rate limiting and
+the runner planned; README omitted Milestone 8 from its completed list; the
+architecture guide named a nonexistent `safe_target()` helper. Other specs
+were left unchanged.
+
 ## 6. Open Issues & Known Limitations
 
 - Milestone 3 storage operations are synchronous; async callers must offload large file work and serialize access to a shared `StorageManager`.
@@ -272,8 +313,9 @@ above.
 ## 8. Next Steps
 
 - Review the Milestone 8 feature branch and merge through a pull request.
-- Prepare the course report/demo from `docs/experiments.md` and regenerate the
-  figures from the versioned raw CSV. Clearly state the loopback/ASGI limits.
+- Course report and demo runbook are prepared: `docs/course-report.md` and
+  `docs/demo.md`; exports are in `output/`. Rehearse the manual four-terminal
+  relay sequence before the live presentation; the automated fallback is tested.
 - Optional follow-up: separate-process or multi-machine benchmarks and repeated
   shutdown testing on other operating systems. These are not required to
   complete the current eight-milestone implementation plan.

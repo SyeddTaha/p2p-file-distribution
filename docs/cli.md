@@ -79,10 +79,11 @@ data, so an origin-only baseline requires all clients to use `--no-upload` and
 exactly one uploading origin. The Python equivalent is
 `SwarmPeer(..., upload_enabled=False)`.
 
-Rate limits and the experiment runner remain planned. This mode alone does
-not provide controlled performance measurements. The parser/dispatch and
-loopback transfer paths are automated-tested; the new flag has not had a
-separate multi-process Windows smoke test.
+Rate limits and the experiment runner are implemented and tested; see
+[experiments.md](experiments.md) for the controlled comparison and measured
+dataset. The parser/dispatch and loopback transfer paths are automated-tested;
+the baseline flag has not had a separate multi-process Windows smoke test.
+See [demo.md](demo.md) for the prepared presentation sequence.
 
 ## Verification scope
 

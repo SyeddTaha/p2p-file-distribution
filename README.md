@@ -15,6 +15,11 @@ See [experiments](docs/experiments.md) for commands, recorded results and limits
 The default sweep has run: 48 trials and 180 verified client observations in
 [`bench/results/experiments.csv`](bench/results/experiments.csv). Measurements
 are limited to one host with loopback TCP and an in-process tracker.
+The [course report](docs/course-report.md) and [demo runbook](docs/demo.md)
+provide the measured narrative, four figures, live CLI steps and a tested
+automated fallback. Export the report with
+`python docs/build_course_report.py --pdf` after regenerating plots; outputs are
+`output/pdf/course-report.pdf` and self-contained `output/course-report.html`.
 
 ---
 
@@ -91,10 +96,10 @@ pytest
 ruff check .
 
 # Check formatting across implemented source and tests
-ruff format --check src/p2p tests
+ruff format --check src/p2p tests bench docs/build_course_report.py
 
 # Run static type checking
-mypy src/p2p tests
+mypy src/p2p tests bench docs/build_course_report.py
 ```
 
 ## 5. CLI Quick Start
@@ -118,7 +123,7 @@ Distribute the manifest file to downloaders out of band. See the
 
 ## 6. Active Phase & Documentation Status
 
-- **Current state:** Milestones 1–7 are tested. Milestone 8 includes baseline controls, token-bucket upload limits, transfer counters, experiment sweeps and analysis. See [project status](docs/project-status.md) for verification and [experiments](docs/experiments.md) for measurement scope.
+- **Current state:** Milestones 1–8 are tested. The measured course report and demo runbook are prepared. See [project status](docs/project-status.md) for verification and [experiments](docs/experiments.md) for measurement scope.
 - **Completed milestones:**
   - Milestone 1 — Project Foundation & Tooling Setup
   - Milestone 2 — Wire Framing Codec & Protocol Messages
@@ -127,6 +132,7 @@ Distribute the manifest file to downloaders out of band. See the
   - Milestone 5 — Peer TCP Connection Engine
   - Milestone 6 — Download Scheduler & Swarm Orchestration
   - Milestone 7 — End-to-End Swarm Integration & Seeder CLI
+  - Milestone 8 — Client-Server Baseline & Performance Benchmarking
 - **Latest verification:** See [project status](docs/project-status.md) for the latest full suite, focused E2E checks, CLI verification, and lint/type/format results.
 - **AI guidance:** [AGENTS.md](AGENTS.md)
 - **Architecture overview:** [docs/architecture.md](docs/architecture.md)

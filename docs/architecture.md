@@ -91,7 +91,7 @@ The Tracker coordinates peer discovery:
 - **Manifest:** JSON file specifying `file_name`, `file_size`, `chunk_size`, `chunk_count`, `file_sha256`, and per-chunk `sha256` array.
 - **Swarm ID:** Derived canonically via `sha256(canonical_json_manifest_bytes)`.
 - **Chunk Acceptance:** A received piece is written to `<filename>.part` at offset `index * chunk_size` **only after** verifying chunk length and SHA-256 hash match the manifest.
-- **Safe Paths:** Manifest filenames are sanitized to prevent directory traversal (`safe_target()` checks).
+- **Safe Paths:** Manifest filenames are sanitized to prevent directory traversal (`validate_safe_filename()` checks).
 - **Atomic Finalization:** Once all chunks are verified, whole-file SHA-256 is checked against `file_sha256`, followed by atomic rename (`os.replace`) to the final destination.
 - **Milestone 3 implementation:** `p2p.storage.manifest` builds, validates, loads bounded JSON, atomically writes manifests, and computes the canonical Swarm ID. `p2p.storage.manager.StorageManager` owns a fresh `.part` file, verifies chunk length and SHA-256 before writing, and publishes only after the on-disk whole-file hash passes. Its methods are synchronous; callers must serialize shared access. Resume support is not implemented. Milestone 7 integrates verified chunk serving through `SwarmPeer`.
 
