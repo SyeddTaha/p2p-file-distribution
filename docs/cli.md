@@ -58,6 +58,27 @@ download with no reachable peers, are reported as `p2p: error: ...` with a
 nonzero exit code and no traceback. Tracker bind errors are logged by Uvicorn
 and also exit nonzero. Argument syntax errors are handled by `argparse`.
 
+## Download without uploading (client-server baseline)
+
+Add `--no-upload` to `download-file` on every client, keeping the original
+`seed-file` process unchanged:
+
+```powershell
+p2p download-file .\payload.manifest.json --download-dir .\downloads --tracker-url http://127.0.0.1:8000 --no-upload
+```
+
+This option disables chunk advertising and serving during and after the
+download. Verification and tracker lifecycle events still run, and the process
+remains online until Ctrl+C. It does not restrict which remote peers can supply
+data, so an origin-only baseline requires all clients to use `--no-upload` and
+exactly one uploading origin. The Python equivalent is
+`SwarmPeer(..., upload_enabled=False)`.
+
+Rate limits and the experiment runner remain planned. This mode alone does
+not provide controlled performance measurements. The parser/dispatch and
+loopback transfer paths are automated-tested; the new flag has not had a
+separate multi-process Windows smoke test.
+
 ## Verification scope
 
 Parser and command dispatch tests cover all four subcommands. The in-process

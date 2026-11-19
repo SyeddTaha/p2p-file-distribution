@@ -155,9 +155,13 @@ def test_pyproject_registers_console_entry_point() -> None:
     assert config["project"]["scripts"]["p2p"] == "p2p.cli:main"
 
 
-@pytest.mark.parametrize("command", ["seed-file", "download-file"])
+@pytest.mark.parametrize(
+    ("command", "no_upload"),
+    [("seed-file", False), ("download-file", False), ("download-file", True)],
+)
 def test_peer_cli_commands_run_and_keep_peer_serving(
     command: str,
+    no_upload: bool,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -207,7 +211,11 @@ def test_peer_cli_commands_run_and_keep_peer_serving(
             "http://tracker.test",
         ]
 
+    if no_upload:
+        args.append("--no-upload")
     main(args)
 
     assert calls["waited"] is True
     assert calls["downloaded"] is (command == "download-file")
+    if command == "download-file":
+        assert calls["kwargs"]["upload_enabled"] is not no_upload

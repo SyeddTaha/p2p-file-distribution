@@ -14,6 +14,8 @@ import httpx
 import pytest
 
 from p2p.peer.client import SwarmPeer
+from p2p.peer.connection import PeerConnection
+from p2p.protocol import Have, Message, Piece
 from p2p.storage.manifest import build_manifest
 from p2p.tracker.registry import SwarmRegistry
 from p2p.tracker.server import app, get_registry
@@ -46,8 +48,11 @@ class RecordingTrackerApp:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("upload_enabled", [True, False], ids=["p2p", "client-server"])
 async def test_tracker_seed_and_three_concurrent_leechers(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    upload_enabled: bool,
 ) -> None:
     contents = random.Random(20261109).randbytes(16 * 1024)
     source = tmp_path / "payload.bin"
@@ -73,10 +78,19 @@ async def test_tracker_seed_and_three_concurrent_leechers(
             tmp_path / f"downloads-{index}",
             tracker_transport=transport,
             peer_id=f"e2e-leecher-{index}",
+            upload_enabled=upload_enabled,
         )
         for index in range(3)
     ]
     heartbeat_tasks: list[asyncio.Task[None]] = []
+    sent_messages: list[tuple[str, Message]] = []
+    original_send = PeerConnection._send_message
+
+    async def record_send(connection: PeerConnection, message: Message) -> None:
+        await original_send(connection, message)
+        sent_messages.append((connection._my_peer_id, message))
+
+    monkeypatch.setattr(PeerConnection, "_send_message", record_send)
 
     try:
         async with asyncio.timeout(30):
@@ -95,8 +109,24 @@ async def test_tracker_seed_and_three_concurrent_leechers(
                 for task in tasks
             )
             assert all(peer.is_seeder for peer in leechers)
-            assert all(peer.sent_haves for peer in leechers)
-            assert any(peer.received_haves for peer in leechers)
+            if upload_enabled:
+                assert all(peer.sent_haves for peer in leechers)
+                assert any(peer.received_haves for peer in leechers)
+            else:
+                assert all(not peer.sent_haves for peer in leechers)
+                assert all(
+                    not peer._local_bitfield().to_indices(manifest["chunk_count"])
+                    for peer in leechers
+                )
+                assert not any(
+                    isinstance(message, (Have, Piece)) and sender != seeder.peer_id
+                    for sender, message in sent_messages
+                )
+                assert sum(
+                    len(message.data)
+                    for sender, message in sent_messages
+                    if sender == seeder.peer_id and isinstance(message, Piece)
+                ) == len(contents) * len(leechers)
             for peer in [seeder, *leechers]:
                 record = registry.get_peer(seeder.swarm_id, peer.peer_id)
                 assert record is not None and record.is_seeder

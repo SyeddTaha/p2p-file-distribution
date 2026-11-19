@@ -54,7 +54,9 @@ Sent immediately upon connection establishment before any other message.
 Sent strictly once per connection, immediately following a successful `HANDSHAKE`.
 
 - Length in bytes: `ceil(chunk_count / 8)`.
-- Bit `1` indicates chunk present and verified; `0` indicates missing.
+- Bit `1` indicates a verified chunk offered for upload; `0` indicates a chunk
+  unavailable for upload (missing or deliberately withheld). Download-only
+  baseline peers always send an all-zero BITFIELD, including after completion.
 - Unused spare bits at the end of the final byte **must** be set to `0`. If any spare bit is `1`, the connection MUST be closed with a protocol error.
 
 ### 3.3 REQUEST (`0x03`)
@@ -69,6 +71,9 @@ Sent strictly once per connection, immediately following a successful `HANDSHAKE
 ### 3.5 HAVE (`0x05`)
 - Payload: `uint32` (4 bytes big-endian) `chunk_index`.
 - Total frame body length: 5 bytes.
+- Download-only baseline peers suppress HAVE on all connections. They close
+  connections that send REQUEST rather than responding with PIECE. This policy
+  uses the existing v1 frames; see [ADR 0006](adr/0006-download-only-baseline.md).
 
 ---
 

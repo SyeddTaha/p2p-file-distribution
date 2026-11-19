@@ -354,3 +354,39 @@ def test_swarm_downloader_enforces_configured_concurrency_limits(tmp_path: Path)
             storage,
             max_global_inflight=MAX_GLOBAL_INFLIGHT + 1,
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("advertise_chunks", [True, False])
+async def test_downloader_controls_have_broadcasts_without_skipping_verified_callback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    advertise_chunks: bool,
+) -> None:
+    scheduler = DownloadScheduler(1)
+    connection = make_connected_peer_connection("source", chunk_count=1)
+    connection._remote_bitfield = Bitfield.from_indices([0], 1)
+    storage = make_storage(tmp_path, b"data", 4)
+    verified_callback = AsyncMock()
+    downloader = SwarmDownloader(
+        [connection],
+        scheduler,
+        storage,
+        advertise_chunks=advertise_chunks,
+        on_chunk_verified=verified_callback,
+    )
+    broadcast = AsyncMock()
+    monkeypatch.setattr(downloader, "_broadcast_have", broadcast)
+    downloader._register_connections()
+    downloader._inboxes["source"].put_nowait(Piece(0, b"data"))
+    try:
+        async with asyncio.timeout(2):
+            assert await downloader._download_from_peer("source") == 0
+        assert storage.verified_chunks == {0}
+        verified_callback.assert_awaited_once_with(0)
+        if advertise_chunks:
+            broadcast.assert_awaited_once_with(0, "source")
+        else:
+            broadcast.assert_not_awaited()
+    finally:
+        await connection.close()

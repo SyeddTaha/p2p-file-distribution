@@ -182,6 +182,8 @@ class SwarmDownloader:
 
     The downloader takes ownership of the supplied connections and closes them
     when the run finishes or is cancelled.
+    ``advertise_chunks=False`` suppresses outbound HAVE broadcasts; verified
+    chunk callbacks still run so the owning peer can track local completion.
     """
 
     def __init__(
@@ -196,7 +198,10 @@ class SwarmDownloader:
         max_global_inflight: int = MAX_GLOBAL_INFLIGHT,
         availability_timeout: float = STALL_TIMEOUT_SEC,
         on_chunk_verified: Callable[[int], Awaitable[None]] | None = None,
+        advertise_chunks: bool = True,
     ) -> None:
+        if not isinstance(advertise_chunks, bool):
+            raise ValueError("advertise_chunks must be a boolean")
         self.connections = tuple(connections)
         if not self.connections:
             raise ValueError("at least one peer connection is required")
@@ -249,6 +254,7 @@ class SwarmDownloader:
         self.max_global_inflight = max_global_inflight
         self.availability_timeout = availability_timeout
         self._on_chunk_verified = on_chunk_verified
+        self._advertise_chunks = advertise_chunks
         self._workers: dict[str, DownloadWorker] = {}
         self._active: dict[str, PeerConnection] = {}
         self._inboxes: dict[str, asyncio.Queue[Message | Exception]] = {}
@@ -336,7 +342,8 @@ class SwarmDownloader:
         worker = self._workers[peer_id]
         chunk_index = await worker.fetch_next()
         if chunk_index is not None:
-            await self._broadcast_have(chunk_index, peer_id)
+            if self._advertise_chunks:
+                await self._broadcast_have(chunk_index, peer_id)
             if self._on_chunk_verified is not None:
                 await self._on_chunk_verified(chunk_index)
         return chunk_index

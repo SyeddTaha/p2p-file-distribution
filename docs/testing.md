@@ -51,6 +51,7 @@ Testing network applications requires strict isolation, determinism, and clean r
 | **PeerServer** | Listener Shutdown | Active loopback connections and handler tasks are closed and awaited during shutdown. |
 | **CLI** | Four Command Entry Point | Parser and dispatch for tracker-start, create-manifest, seed-file, and download-file; expected no-peer download failures exit nonzero with a useful message and no traceback; project script resolves to `p2p.cli:main`. |
 | **End-to-End (Milestone 7)** | Tracker-Driven File Transfer | In-process FastAPI tracker, real loopback TCP, one seeder and three concurrent leechers; byte equality, whole-file SHA-256, HAVE exchange, tracker lifecycle, and cleanup. A staged relay test proves a completed leecher serves nonzero PIECE payload bytes to a later leecher after the original seeder is removed. |
+| **Client-server baseline** | Download-only clients | Three concurrent clients verify the original file while only the origin emits PIECE payloads; no client sends HAVE or PIECE. Partial and completed clients advertise empty BITFIELDs, refuse direct requests from existing/new connections, and clean up listener handlers, heartbeat tasks, and tracker entries. CLI dispatch preserves upload defaults and passes `--no-upload` correctly. |
 
 ---
 
@@ -118,6 +119,35 @@ transfer integrity, Ctrl+C shutdown, tracker deregistration, and process cleanup
 Tests for the no-available-chunks failure configure
 `availability_timeout=0.01` so they exercise the bounded timeout without
 waiting for the production default of 15 seconds.
+
+### Download-only baseline verification (2026-11-19)
+
+Run the baseline controls, downloader callback/advertisement checks, CLI, and
+both transfer modes:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/unit/test_cli.py tests/unit/test_scheduler.py tests/integration/test_download_only.py tests/e2e/test_full_transfer.py
+```
+
+This command passed 32 tests after correcting the new unit test's queue fixture.
+The full suite passed 310 tests with one existing upstream Starlette/httpx
+deprecation warning. Ruff lint, source/test formatting (39 files), and Mypy
+(39 files) passed. Exact commands and the initial fixture failure are recorded
+in [project status](project-status.md#download-only-baseline-verification-2026-11-19).
+
+Repeat the real loopback scenarios with:
+
+```powershell
+for ($baselineRun = 1; $baselineRun -le 5; $baselineRun++) {
+    .\.venv\Scripts\python.exe -m pytest tests/integration/test_download_only.py tests/e2e/test_full_transfer.py
+    if ($LASTEXITCODE -ne 0) { throw "Baseline stability run $baselineRun failed" }
+}
+```
+
+All five tests passed in each of five consecutive runs (25 test executions).
+These tests use an in-process tracker and unthrottled loopback TCP. They verify
+payload sources and integrity, not performance; no benchmark experiment or
+separate multi-process smoke of `--no-upload` was run.
 
 ### Milestone 7 interactive Windows smoke test
 

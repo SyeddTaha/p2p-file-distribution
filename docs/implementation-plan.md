@@ -13,7 +13,7 @@ This document outlines the small, testable implementation milestones for the P2P
 - [x] **Milestone 5: Peer TCP Connection & Handshake Engine** (**COMPLETED - TESTED** - 2026-11-05)
 - [x] **Milestone 6: Download Scheduler & Swarm Orchestration** (**COMPLETED - TESTED** - 2026-11-09)
 - [x] **Milestone 7: End-to-End Swarm Integration & Seeder CLI** (**COMPLETED - TESTED** - 2026-11-17)
-- [ ] **Milestone 8: Client-Server Baseline & Performance Benchmarking** (PLANNED)
+- [ ] **Milestone 8: Client-Server Baseline & Performance Benchmarking** (PARTIALLY IMPLEMENTED)
 
 ---
 
@@ -136,9 +136,16 @@ This document outlines the small, testable implementation milestones for the P2P
 ### Milestone 8: Client-Server Baseline & Performance Benchmarking
 - **Goal:** Automated benchmark harness comparing P2P distribution against a Client-Server baseline under token-bucket rate limits.
 - **Deliverables:**
-  - Client-server baseline mode flag in peer/tracker code.
+  - [x] Client-server baseline peer option and CLI flag (tracker schema unchanged;
+    [ADR 0006](adr/0006-download-only-baseline.md)).
+  - [ ] Shared token-bucket upload limits and transfer metric counters.
   - `bench/run_experiments.py` (Automated workload runner exporting CSV data).
   - `bench/plot_results.py` (Headless Matplotlib chart generator).
 - **Acceptance Criteria:**
+  - Baseline clients verify downloads using the P2P transfer path while sending
+    no chunk advertisements or PIECE payloads, including after completion.
   - Experiments run across varying client counts (e.g. 1, 2, 4, 8 clients) with 5 repetitions per config.
   - CSV dataset committed in `bench/results/` and plots generated in `bench/plots/`.
+- **Current scope:** Baseline controls and correctness tests are implemented.
+  Rate limiting, metrics, runner, dataset, and plots remain planned; no benchmark
+  measurements have been collected. See `docs/project-status.md` for validation.

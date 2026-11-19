@@ -37,6 +37,8 @@ class SwarmPeer:
     The instance owns its listener and HTTP client. For download peers, the
     ``StorageManager`` owns verified chunks and the listener serves only those
     chunks while the transfer is in progress and after it completes.
+    With ``upload_enabled=False``, verified chunks remain local: BITFIELD is
+    empty, HAVE is suppressed, and incoming chunk requests are refused.
     """
 
     def __init__(
@@ -51,8 +53,11 @@ class SwarmPeer:
         peer_id: str | None = None,
         tracker_transport: httpx.AsyncBaseTransport | None = None,
         tracker_timeout: float = 10.0,
+        upload_enabled: bool = True,
     ) -> None:
         self.manifest: FileManifest = validate_manifest(manifest)
+        if not isinstance(upload_enabled, bool):
+            raise ValueError("upload_enabled must be a boolean")
         if not tracker_url.startswith(("http://", "https://")):
             raise ValueError("tracker_url must use http:// or https://")
         if not isinstance(listen_port, int) or isinstance(listen_port, bool):
@@ -74,6 +79,7 @@ class SwarmPeer:
         self.peer_id = peer_id or f"peer-{uuid.uuid4().hex}"
         self.swarm_id = compute_swarm_id(self.manifest)
         self.seed_file = seed_file
+        self._upload_enabled = upload_enabled
         self.storage = (
             None
             if seed_file is not None
@@ -118,7 +124,8 @@ class SwarmPeer:
         return len(self._available_chunks) == self.manifest["chunk_count"]
 
     def _local_bitfield(self) -> Bitfield:
-        return Bitfield.from_indices(self._available_chunks, self.manifest["chunk_count"])
+        advertised_chunks = self._available_chunks if self._upload_enabled else set()
+        return Bitfield.from_indices(advertised_chunks, self.manifest["chunk_count"])
 
     async def start(self) -> int:
         """Start the peer listener, announce its presence, and launch heartbeats."""
@@ -218,6 +225,8 @@ class SwarmPeer:
             raise
 
     async def _read_chunk(self, index: int) -> bytes:
+        if not self._upload_enabled:
+            raise ProtocolError("chunk uploading is disabled")
         if index not in self._available_chunks:
             raise ProtocolError(f"peer does not have verified chunk {index}")
         source = self._seed_path
@@ -255,7 +264,8 @@ class SwarmPeer:
         """Serve verified REQUESTs and record remote HAVE notifications."""
         try:
             initial_chunks = connection.local_bitfield.to_indices(self.manifest["chunk_count"])
-            for index in sorted(self._available_chunks - initial_chunks):
+            advertised_chunks = self._local_bitfield().to_indices(self.manifest["chunk_count"])
+            for index in sorted(advertised_chunks - initial_chunks):
                 await connection.send_have(index)
             while connection.is_connected:
                 message = await connection.receive_message()
@@ -272,7 +282,7 @@ class SwarmPeer:
 
     async def _on_chunk_verified(self, index: int) -> None:
         self._available_chunks.add(index)
-        if self._server is None:
+        if not self._upload_enabled or self._server is None:
             return
         self._server.update_local_bitfield(self._local_bitfield())
         self.sent_haves.add(index)
@@ -404,6 +414,7 @@ class SwarmPeer:
                     scheduler,
                     self.storage,
                     on_chunk_verified=self._on_chunk_verified,
+                    advertise_chunks=self._upload_enabled,
                 )
                 await downloader.run()
             finally:
