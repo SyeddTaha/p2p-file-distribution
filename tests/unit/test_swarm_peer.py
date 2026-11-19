@@ -16,7 +16,14 @@ from p2p.peer.client import SwarmPeer
 from p2p.peer.connection import PeerConnection
 from p2p.peer.downloader import NoAvailablePeersError
 from p2p.peer.server import PeerServer
-from p2p.protocol import Bitfield, ConnectionClosed, Handshake, ProtocolError, read_message
+from p2p.protocol import (
+    Bitfield,
+    ConnectionClosed,
+    Handshake,
+    ProtocolError,
+    Request,
+    read_message,
+)
 from p2p.storage.manifest import build_manifest
 from p2p.tracker.models import AnnounceResponse, PeerInfo
 from p2p.tracker.server import app
@@ -540,3 +547,75 @@ def test_tracker_response_rejects_invalid_peer_descriptors_and_interval() -> Non
                 "peers": [{"peer_id": "peer", "host": "not a host", "port": 70000}],
             }
         )
+
+
+def test_swarm_peer_rejects_invalid_upload_rate_limit(tmp_path: Path) -> None:
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"content")
+    manifest = build_manifest(source, chunk_size=4)
+
+    for invalid in [0, -100, float("nan"), float("inf"), True, "100"]:
+        with pytest.raises(ValueError, match="upload_rate_limit"):
+            SwarmPeer(
+                manifest,
+                "http://tracker.test",
+                tmp_path / "downloads",
+                upload_rate_limit=invalid,  # type: ignore[arg-type]
+            )
+
+
+@pytest.mark.asyncio
+async def test_swarm_peer_serves_with_rate_limiter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"01234567")
+    manifest = build_manifest(source, chunk_size=4)
+
+    peer = SwarmPeer(
+        manifest,
+        "http://tracker.test",
+        tmp_path / "downloads",
+        seed_file=source,
+        upload_rate_limit=1024,
+    )
+    assert peer._rate_limiter is not None
+
+    acquired: list[int] = []
+
+    async def fake_acquire(num_bytes: int) -> None:
+        acquired.append(num_bytes)
+
+    monkeypatch.setattr(peer._rate_limiter, "acquire", fake_acquire)
+
+    class FakeConn:
+        is_connected = True
+        local_bitfield = Bitfield.from_indices({0, 1}, 2)
+        remote_peer_id = "test-remote"
+
+        def __init__(self) -> None:
+            self.pieces: list[tuple[int, bytes]] = []
+            self._messages: list[Any] = [Request(chunk_index=0)]
+
+        async def send_have(self, index: int) -> None:
+            pass
+
+        async def receive_message(self) -> Any:
+            if self._messages:
+                return self._messages.pop(0)
+            self.is_connected = False
+            from p2p.protocol import ConnectionClosed
+
+            raise ConnectionClosed("done")
+
+        async def send_piece(self, chunk_index: int, data: bytes) -> None:
+            self.pieces.append((chunk_index, data))
+
+    conn = FakeConn()
+    await peer._serve_connection(conn)  # type: ignore[arg-type]
+
+    assert acquired == [4]
+    assert len(conn.pieces) == 1
+    assert conn.pieces[0] == (0, b"0123")
+    assert peer.bytes_uploaded == 4

@@ -8,6 +8,7 @@ from p2p.peer.downloader import (
     NoAvailablePeersError,
     SwarmDownloader,
 )
+from p2p.peer.rate_limiter import TokenBucketRateLimiter
 from p2p.peer.scheduler import IN_FLIGHT, ChunkState, DownloadScheduler
 from p2p.peer.server import PeerServer
 
@@ -23,4 +24,5 @@ __all__ = [
     "PeerServer",
     "SwarmDownloader",
     "SwarmPeer",
+    "TokenBucketRateLimiter",
 ]

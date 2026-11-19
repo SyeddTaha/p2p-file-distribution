@@ -1,6 +1,6 @@
 # Project Status & Team Workflow Tracking
 
-> Last updated: 2026-11-19. Milestones 1-7 are implemented and tested; Milestone 8 is partially implemented (download-only baseline controls tested; performance experiments not run).
+> Last updated: 2026-11-20. Milestones 1-8 are implemented and tested. Milestone 8's full default loopback sweep ran: 48 trials, 180 verified client observations, raw CSV and plots generated. The implementation and raw dataset are versioned together on `feat/download-only-baseline`.
 
 ---
 
@@ -15,7 +15,7 @@
 | **Milestone 5** | **Peer TCP Connection Engine** | **TESTED** | 2026-11-05 | 32 Milestone 5 tests passed (26 unit, 6 integration), full suite 253 passed, Ruff and Mypy clean |
 | **Milestone 6** | **Download Scheduler & Orchestrator** | **TESTED** | 2026-11-09 | Full suite 273 passed; 20 focused tests, 90% downloader coverage; 5 loopback tests passed in 5 consecutive runs |
 | **Milestone 7** | **End-to-End Swarm & Seeder CLI** | **TESTED** | 2026-11-17 | Full suite 304 passed; staged leecher-to-leecher PIECE transfer; targeted startup/CLI/cancellation regressions; interactive Windows transfer, integrity, shutdown, deregistration, and process-cleanup smoke passed |
-| **Milestone 8** | **Benchmarking & Baseline Mode** | Partially implemented | 2026-11-19 | Download-only baseline controls tested; rate limits, metrics, runner, CSV dataset, and plots remain planned |
+| **Milestone 8** | **Benchmarking & Baseline Mode** | **Tested** | 2026-11-20 | 376 tests passed; Ruff/format/Mypy clean; full 48-trial loopback sweep, versioned raw CSV and four plots generated |
 
 ---
 
@@ -76,9 +76,12 @@ mypy src/p2p
 | Peer | Tracker-connected `SwarmPeer` lifecycle | **Tested** | Yes | Started, periodic heartbeat, completed, stopped; startup rollback closes HTTP resources and signals stopped even when server shutdown fails; discovery cancellation closes attempts and restores capacity |
 | CLI | Tracker, manifest, seeder, and downloader commands | **Tested** | Yes | Editable install succeeded; both help entry points verified; invalid inputs and no-peer downloads report nonzero exit codes without tracebacks |
 | End-to-end | Tracker-driven multi-leecher transfer | **Tested** | Yes | In-process FastAPI tracker and real loopback TCP; concurrent and staged relay tests verify a completed leecher serves actual nonzero PIECE bytes to a later leecher after the origin stops |
-| Testing | Unit, integration, and E2E tests | **Tested** | Yes | Latest full suite: 310 passed (2026-11-19); one upstream Starlette/httpx warning; see verification log |
+| Testing | Unit, integration, and E2E tests | **Tested** | Yes | Latest full suite: 376 passed (2026-11-20); one upstream Starlette/httpx warning; see verification log |
 | Benchmarking | Download-only baseline controls | **Tested** | Yes | `SwarmPeer(upload_enabled=False)` / `download-file --no-upload`; three concurrent clients receive only origin payloads; partial and complete clients refuse uploads |
-| Benchmarking | Rate limits, metrics, runner, CSV & plots | Planned | No | Milestone 8; no performance experiments run |
+| Benchmarking | Shared token-bucket upload rate limiter | **Tested** | Yes | `TokenBucketRateLimiter`, `SwarmPeer(upload_rate_limit=...)`, CLI `--upload-rate-limit`; deterministic clock, burst, cancellation safety; 28 unit tests |
+| Benchmarking | Transfer metric counters | **Tested** | Yes | `bytes_uploaded`, `bytes_downloaded`, `total_retries`, `chunk_hash_failures`, duration, throughput on `SwarmDownloader` and `SwarmPeer`; full suite 343 passed |
+| Benchmarking | Workload runner & plots | **Tested** | Yes | N=1,2,4,8 loopback transfer sweep; CLI/config validation, CSV/schema, aggregation and exclusion tests; smoke passed; final verification below |
+| Benchmarking | Default workload dataset | **Tested** | Yes | **Run**: full 10 MiB sweep, 48 trials/180 verified client rows; [versioned raw data](../bench/results/experiments.csv), [results and limits](experiments.md) |
 
 ---
 
@@ -93,17 +96,19 @@ mypy src/p2p
 | `docs/protocol.md` | Created | Wire format specification, message codes, state machine |
 | `docs/manifest-format.md` | Updated | JSON schema, limits, Swarm ID, safe paths, storage workflow |
 | `docs/manifest.md` | Created | Linked summary |
-| `docs/implementation-plan.md` | Updated | Milestone 7 acceptance and verification; Milestone 8 baseline controls and remaining work |
+| `docs/implementation-plan.md` | Updated | Milestones 1-8 implementation and verification; raw CSV versioned with the runner |
 | `docs/testing.md` | Updated | Scenario matrix, baseline correctness coverage, and validation commands/results |
 | `docs/cli.md` | Created | Tracker, manifest, seeder, and downloader CLI reference |
 | `docs/adr/0004-download-scheduling-and-failover.md` | Created | Seeded selection, per-peer concurrency, retry, and failover policy |
 | `docs/adr/0005-integrated-swarm-peer-lifecycle.md` | Created | Tracker/peer lifecycle and per-connection message-reader ownership |
 | `docs/adr/0006-download-only-baseline.md` | Created | Per-peer baseline policy, advertisement suppression, unchanged tracker schema |
-| `docs/experiments.md` | Updated | Hypotheses, controls, implemented baseline mode, planned rate limits and CSV format |
+| `docs/adr/0007-token-bucket-rate-limiting.md` | Created | Shared per-uploader bandwidth limit, burst handling, deterministic clock, safe cancellation |
+| `docs/experiments.md` | Updated | Hypotheses, controls, runner commands, current CSV fields, exclusions and measurement limitations |
+| `docs/adr/0008-in-process-benchmark-runner.md` | Created | Isolated ASGI tracker/loopback trials, seeded client schedules, observation and exclusion policy |
 | `docs/adr/0001-project-structure-and-stack.md` | Created | Stack & directory layout |
 | `docs/adr/0002-wire-protocol-framing-and-limits.md` | Created | Framing format & security bounds |
 | `docs/adr/0003-manifest-v1-and-storage-policy.md` | Created | Manifest v1, empty-file and storage policies |
-| `docs/project-status.md` | Updated | Current validation, partial benchmark implementation, and known limitations |
+| `docs/project-status.md` | Updated | Current validation, measured loopback benchmark state and known limitations |
 
 ---
 
@@ -187,6 +192,61 @@ Commands used the existing virtual environment; no dependencies were installed.
 These are correctness checks. No benchmark workload, timing dataset, or
 performance comparison was run.
 
+### Token-bucket rate limiter and metrics verification (2026-11-20)
+
+Validation performed on `feat/download-only-baseline`.
+Commands used the existing virtual environment; no external dependencies were installed.
+
+| Command | Actual result |
+|---|---|
+| `.\.venv\Scripts\python.exe -m pytest tests/unit/test_rate_limiter.py` | 28 passed in 1.68s |
+| `.\.venv\Scripts\python.exe -m pytest tests/unit/test_cli.py tests/unit/test_swarm_peer.py tests/unit/test_scheduler.py` | 44 passed in 8.35s |
+| `.\.venv\Scripts\python.exe -m pytest` | 343 passed, 1 upstream Starlette/httpx warning in 13.01s |
+| `.\.venv\Scripts\python.exe -m ruff check .` | All checks passed! |
+| `.\.venv\Scripts\python.exe -m ruff format --check src/p2p tests` | 41 files already formatted |
+| `.\.venv\Scripts\python.exe -m mypy src/p2p tests` | Success: no issues found in 41 source files |
+| `git diff --check` | Exited 0; no whitespace errors |
+
+### Experiment runner and plot verification (2026-11-20)
+
+Existing uncommitted Milestone 8 work on `feat/download-only-baseline`, based on
+`b926ada`, was preserved. No dependencies were installed. Added the runner,
+analysis, failure-metric retention and optional per-client scheduler seed.
+
+| Command | Actual result |
+|---|---|
+| `.\.venv\Scripts\python.exe -m pytest tests/unit/test_benchmark_peer_metrics.py` (before fix) | 2 failed: transfer/cancellation counters were zero; regression reproduced |
+| Same regression command after metric retention fix | 2 passed in 3.84s |
+| `.\.venv\Scripts\python.exe -m pytest tests/unit/test_benchmarks.py tests/unit/test_benchmark_peer_metrics.py tests/integration/test_benchmark_runner.py` (initial runner) | 29 passed in 24.32s |
+| `.\.venv\Scripts\python.exe -m pytest -ra` (before scheduler seed option) | 373 passed, 1 warning in 34.78s |
+| `.\.venv\Scripts\python.exe -m pytest -ra` (final implementation) | 376 passed, 1 warning in 29.03s |
+| `.\.venv\Scripts\python.exe -m pytest tests/integration/test_benchmark_runner.py -q` (5 consecutive runs after seed option) | 7 passed per run; 35 test executions, all exited 0 |
+| `.\.venv\Scripts\python.exe -m ruff check .` | All checks passed! |
+| `.\.venv\Scripts\python.exe -m ruff format --check src/p2p tests bench` | 47 files already formatted |
+| `.\.venv\Scripts\python.exe -m mypy src/p2p tests bench` | Success: no issues found in 47 source files |
+| `git diff --check` | Exited 0; LF/CRLF conversion notices only |
+| `python bench/run_experiments.py --help`; `python bench/plot_results.py --help` (venv Python) | Both exited 0; direct and module entry points supported |
+| Seeded smoke runner command in `docs/experiments.md` | Exited 0, 30 observations; all final hashes passed; baseline leecher uploads zero; P2P leecher uploads observed |
+| `python -m bench.plot_results --csv bench/results/smoke-seeded.csv --output-dir bench/plots/smoke-seeded --experiment-id m8-smoke-seeded` (venv Python) | Exited 0; 4 plots plus summary and audit generated |
+| `.\.venv\Scripts\python.exe -m bench.run_experiments --experiment-id m8-loopback-20261120` | Exited 0; `Wrote 180 observations to bench/results/experiments.csv`; 48 trials, all succeeded |
+| `.\.venv\Scripts\python.exe -m bench.plot_results --experiment-id m8-loopback-20261120` | Exited 0; four PNGs generated plus summary/audit CSV; completion and peer-share charts visually inspected |
+| `.\.venv\Scripts\python.exe -` (inline standard-library CSV audit) | Passed: 48 complete trials, 180 verified rows, 150 measured/30 warmup; 5 measured + 1 warmup per configuration; upload totals balance; retries and integrity failures zero; plot audit 40 included/8 warmup |
+
+Initial lint/type checks found formatting and type errors that were corrected.
+The first direct plot-script help call failed to resolve the `bench` package;
+the import now supports both invocation forms. An early smoke with the old
+fixed-zero scheduler seed had no peer uploads; the final harness records
+distinct client seeds paired between modes. Smoke data is kept separate from
+the default performance dataset and supplies no performance conclusion.
+
+The full default sweep is **Run**, collected from `b926ada` plus the then-dirty
+working tree (`git_dirty=true`). The implementation and raw CSV are versioned
+together in the Milestone 8 commit on `feat/download-only-baseline`; the raw
+metadata remains unchanged to describe the actual collection state. Measured
+results and limitations are recorded in `docs/experiments.md`. Generated
+PNGs/derived CSVs remain ignored and are reproducible with the plotting command
+above.
+
 ## 6. Open Issues & Known Limitations
 
 - Milestone 3 storage operations are synchronous; async callers must offload large file work and serialize access to a shared `StorageManager`.
@@ -199,13 +259,21 @@ performance comparison was run.
   origin-only baseline requires every client to disable uploads and exactly one
   uploading seed. The flag has automated loopback/CLI coverage but has not had
   a separate multi-process Windows smoke test.
-- No rate limiter, transfer metric counters, workload runner, CSV dataset, or
-  plots exist yet. Unconstrained loopback correctness tests provide no benchmark
-  timing evidence. The raw CSV ignore rule will need adjustment when datasets
-  are introduced, so data supporting claims can be versioned as required.
+- Benchmark results use one Python process, loopback TCP and an in-process
+  ASGI tracker; they do not establish deployment or real-network performance.
+  Resource usage/RAM and external activity are not automatically measured.
+  Generated plots/summary CSVs are ignored and regenerated from raw observations.
 
 ## 7. Decisions Needed
 
-- No outstanding baseline-mode decisions. Next implement a shared per-uploader
-  token bucket (across connections), with deterministic clock tests and
-  cancellation cleanup, then transfer metrics and the experiment runner.
+- No pending design decision for the loopback runner. A separate-process or
+  multi-machine performance harness would require an explicit follow-up scope.
+
+## 8. Next Steps
+
+- Review the Milestone 8 feature branch and merge through a pull request.
+- Prepare the course report/demo from `docs/experiments.md` and regenerate the
+  figures from the versioned raw CSV. Clearly state the loopback/ASGI limits.
+- Optional follow-up: separate-process or multi-machine benchmarks and repeated
+  shutdown testing on other operating systems. These are not required to
+  complete the current eight-milestone implementation plan.

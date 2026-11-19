@@ -390,3 +390,24 @@ async def test_downloader_controls_have_broadcasts_without_skipping_verified_cal
             broadcast.assert_not_awaited()
     finally:
         await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_downloader_tracks_transfer_metrics(
+    tmp_path: Path,
+) -> None:
+    scheduler = DownloadScheduler(1)
+    conn = make_connected_peer_connection("source", chunk_count=1)
+    conn._remote_bitfield = Bitfield.from_indices([0], 1)
+    storage = make_storage(tmp_path, b"1234", 4)
+    downloader = SwarmDownloader([conn], scheduler, storage)
+    downloader._register_connections()
+    downloader._inboxes["source"].put_nowait(Piece(0, b"1234"))
+    try:
+        async with asyncio.timeout(2):
+            assert await downloader._download_from_peer("source") == 0
+        assert downloader.bytes_downloaded == 4
+        assert downloader.total_retries == 0
+        assert downloader.chunk_hash_failures == 0
+    finally:
+        await conn.close()

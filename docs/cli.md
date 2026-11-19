@@ -53,6 +53,11 @@ address and the address advertised to the tracker; set it to an address peers
 can reach when running across machines. IPv4, IPv6 literals, and hostnames are
 accepted; URI-style IPv6 brackets are removed at the socket boundary.
 
+Both `seed-file` and `download-file` also accept `--upload-rate-limit <bytes/sec>`
+to cap aggregate outbound upload bandwidth across all peer connections using a
+token-bucket rate limiter. If omitted, uploads proceed without an application
+rate limit.
+
 Expected runtime input and network errors from peer commands, including a
 download with no reachable peers, are reported as `p2p: error: ...` with a
 nonzero exit code and no traceback. Tracker bind errors are logged by Uvicorn

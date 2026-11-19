@@ -1,1 +1,1 @@
-"""Benchmark runner and plotting scripts package."""
+"""Reproducible benchmark runner and analysis tools."""

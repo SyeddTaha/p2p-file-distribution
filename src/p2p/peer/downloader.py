@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import time
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Final
 
@@ -78,6 +79,9 @@ class DownloadWorker:
         self._inbound_messages = inbound_messages
         self._completed: set[int] = set()
         self.last_error: Exception | None = None
+        self.bytes_downloaded: int = 0
+        self.retry_count: int = 0
+        self.chunk_hash_failures: int = 0
 
     @property
     def completed(self) -> frozenset[int]:
@@ -119,6 +123,7 @@ class DownloadWorker:
                             f"Received PIECE for chunk {msg.chunk_index} instead of {chunk_index}"
                         )
                     self.storage.write_chunk(chunk_index, msg.data)
+                    self.bytes_downloaded += len(msg.data)
                     return msg
                 if isinstance(msg, Request):
                     raise ProtocolError(
@@ -150,6 +155,8 @@ class DownloadWorker:
                 raise
             except _TRANSFER_ERRORS as exc:
                 self.last_error = exc
+                if isinstance(exc, ChunkIntegrityError):
+                    self.chunk_hash_failures += 1
                 self.connection.cancel_pending_request(chunk_index)
                 if attempt + 1 >= self.max_retries or not self.connection.is_connected:
                     self.scheduler.release(chunk_index, peer_id=peer_id, failed=True)
@@ -160,6 +167,7 @@ class DownloadWorker:
                         peer_id,
                     )
                     return None
+                self.retry_count += 1
                 await asyncio.sleep(self.retry_delay * (2**attempt))
 
         raise AssertionError("positive max_retries must execute at least one request")
@@ -262,6 +270,38 @@ class SwarmDownloader:
         self._worker_tasks: dict[str, asyncio.Task[int | None]] = {}
         self._reader_errors: dict[str, Exception] = {}
         self._availability_changed = asyncio.Event()
+        self._retired_bytes_downloaded: int = 0
+        self._retired_retries: int = 0
+        self._retired_hash_failures: int = 0
+        self._start_time: float | None = None
+        self._end_time: float | None = None
+
+    @property
+    def bytes_downloaded(self) -> int:
+        """Total verified payload bytes downloaded across all workers."""
+        return (
+            sum(w.bytes_downloaded for w in self._workers.values()) + self._retired_bytes_downloaded
+        )
+
+    @property
+    def total_retries(self) -> int:
+        """Total retry attempts made across all workers."""
+        return sum(w.retry_count for w in self._workers.values()) + self._retired_retries
+
+    @property
+    def chunk_hash_failures(self) -> int:
+        """Total chunk integrity/hash failures encountered."""
+        return (
+            sum(w.chunk_hash_failures for w in self._workers.values()) + self._retired_hash_failures
+        )
+
+    @property
+    def duration_seconds(self) -> float:
+        """Download duration in seconds measured via monotonic clock."""
+        if self._start_time is None:
+            return 0.0
+        end = self._end_time if self._end_time is not None else time.perf_counter()
+        return max(0.0, end - self._start_time)
 
     def _register_connections(self) -> None:
         for connection in self.connections:
@@ -311,7 +351,11 @@ class SwarmDownloader:
     async def _retire_peer(self, peer_id: str) -> None:
         self.scheduler.unregister_peer(peer_id)
         connection = self._active.pop(peer_id, None)
-        self._workers.pop(peer_id, None)
+        worker = self._workers.pop(peer_id, None)
+        if worker is not None:
+            self._retired_bytes_downloaded += worker.bytes_downloaded
+            self._retired_retries += worker.retry_count
+            self._retired_hash_failures += worker.chunk_hash_failures
         self._inboxes.pop(peer_id, None)
         self._reader_errors.pop(peer_id, None)
         reader_task = self._reader_tasks.pop(peer_id, None)
@@ -365,6 +409,7 @@ class SwarmDownloader:
 
     async def run(self) -> set[int]:
         """Download available chunks in parallel, finalize storage, and close peers."""
+        self._start_time = time.perf_counter()
         try:
             self._register_connections()
             self._start_readers()
@@ -417,8 +462,11 @@ class SwarmDownloader:
                     )
 
             await asyncio.to_thread(self.storage.finalize)
+            self._end_time = time.perf_counter()
             return set(self.scheduler.verified_chunks)
         finally:
+            if self._end_time is None:
+                self._end_time = time.perf_counter()
             reader_tasks = tuple(self._reader_tasks.values())
             for task in reader_tasks:
                 task.cancel()

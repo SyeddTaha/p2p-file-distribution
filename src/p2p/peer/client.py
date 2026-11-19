@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import logging
 import math
+import random
 import uuid
 from pathlib import Path
 from typing import Self
@@ -16,6 +17,7 @@ import httpx
 from p2p.config import MAX_PEER_CONNECTIONS, STALL_TIMEOUT_SEC
 from p2p.peer.connection import PeerConnection
 from p2p.peer.downloader import NoAvailablePeersError, SwarmDownloader
+from p2p.peer.rate_limiter import TokenBucketRateLimiter
 from p2p.peer.scheduler import DownloadScheduler
 from p2p.peer.server import PeerServer
 from p2p.protocol import Bitfield, ConnectionClosed, Have, Piece, ProtocolError, Request
@@ -54,10 +56,14 @@ class SwarmPeer:
         tracker_transport: httpx.AsyncBaseTransport | None = None,
         tracker_timeout: float = 10.0,
         upload_enabled: bool = True,
+        upload_rate_limit: float | None = None,
+        scheduler_seed: int = 0,
     ) -> None:
         self.manifest: FileManifest = validate_manifest(manifest)
         if not isinstance(upload_enabled, bool):
             raise ValueError("upload_enabled must be a boolean")
+        if type(scheduler_seed) is not int:
+            raise ValueError("scheduler_seed must be an integer")
         if not tracker_url.startswith(("http://", "https://")):
             raise ValueError("tracker_url must use http:// or https://")
         if not isinstance(listen_port, int) or isinstance(listen_port, bool):
@@ -73,6 +79,13 @@ class SwarmPeer:
             or tracker_timeout <= 0
         ):
             raise ValueError("tracker_timeout must be a positive finite number")
+        if upload_rate_limit is not None and (
+            not isinstance(upload_rate_limit, (int, float))
+            or isinstance(upload_rate_limit, bool)
+            or not math.isfinite(upload_rate_limit)
+            or upload_rate_limit <= 0
+        ):
+            raise ValueError("upload_rate_limit must be a positive finite number or None")
 
         self.tracker_url = tracker_url.rstrip("/")
         self.host = host
@@ -80,6 +93,10 @@ class SwarmPeer:
         self.swarm_id = compute_swarm_id(self.manifest)
         self.seed_file = seed_file
         self._upload_enabled = upload_enabled
+        self._scheduler_seed = scheduler_seed
+        self._rate_limiter: TokenBucketRateLimiter | None = (
+            TokenBucketRateLimiter(upload_rate_limit) if upload_rate_limit is not None else None
+        )
         self.storage = (
             None
             if seed_file is not None
@@ -110,6 +127,12 @@ class SwarmPeer:
         self.received_haves: set[tuple[str, int]] = set()
         self.sent_haves: set[int] = set()
         self._known_peers: dict[str, PeerInfo] = {}
+        self.bytes_uploaded: int = 0
+        self.bytes_downloaded: int = 0
+        self.total_retries: int = 0
+        self.chunk_hash_failures: int = 0
+        self.download_duration_seconds: float = 0.0
+        self.download_throughput_bytes_per_s: float = 0.0
 
     @property
     def listen_port(self) -> int:
@@ -271,7 +294,10 @@ class SwarmPeer:
                 message = await connection.receive_message()
                 if isinstance(message, Request):
                     data = await self._read_chunk(message.chunk_index)
+                    if self._rate_limiter is not None:
+                        await self._rate_limiter.acquire(len(data))
                     await connection.send_piece(message.chunk_index, data)
+                    self.bytes_uploaded += len(data)
                 elif isinstance(message, Have):
                     if connection.remote_peer_id is not None:
                         self.received_haves.add((connection.remote_peer_id, message.chunk_index))
@@ -408,7 +434,9 @@ class SwarmPeer:
                 raise NoAvailablePeersError("tracker returned no reachable peers")
 
             try:
-                scheduler = DownloadScheduler(self.manifest["chunk_count"])
+                scheduler = DownloadScheduler(
+                    self.manifest["chunk_count"], rng=random.Random(self._scheduler_seed)
+                )
                 downloader = SwarmDownloader(
                     connections,
                     scheduler,
@@ -416,7 +444,17 @@ class SwarmPeer:
                     on_chunk_verified=self._on_chunk_verified,
                     advertise_chunks=self._upload_enabled,
                 )
-                await downloader.run()
+                try:
+                    await downloader.run()
+                finally:
+                    self.bytes_downloaded = downloader.bytes_downloaded
+                    self.total_retries = downloader.total_retries
+                    self.chunk_hash_failures = downloader.chunk_hash_failures
+                    self.download_duration_seconds = downloader.duration_seconds
+                    if self.download_duration_seconds > 0:
+                        self.download_throughput_bytes_per_s = (
+                            self.bytes_downloaded / self.download_duration_seconds
+                        )
             finally:
                 self._outbound_connection_count = 0
                 if self._server is not None:

@@ -38,6 +38,13 @@ def build_parser() -> argparse.ArgumentParser:
     seeder.add_argument("--tracker-url", required=True)
     seeder.add_argument("--listen-port", type=int, default=0)
     seeder.add_argument("--host", default="127.0.0.1")
+    seeder.add_argument(
+        "--upload-rate-limit",
+        type=float,
+        default=None,
+        metavar="BYTES_PER_SEC",
+        help="cap aggregate upload bandwidth (bytes/sec); unlimited if omitted",
+    )
 
     downloader = commands.add_parser("download-file", help="download and seed a swarm file")
     downloader.add_argument("manifest_path", type=Path)
@@ -49,6 +56,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-upload",
         action="store_true",
         help="disable chunk advertising and uploading for the client-server baseline",
+    )
+    downloader.add_argument(
+        "--upload-rate-limit",
+        type=float,
+        default=None,
+        metavar="BYTES_PER_SEC",
+        help="cap aggregate upload bandwidth (bytes/sec); unlimited if omitted",
     )
     return parser
 
@@ -73,6 +87,7 @@ async def _run_peer_command(args: argparse.Namespace) -> None:
             seed_file=args.file_path,
             host=args.host,
             listen_port=args.listen_port,
+            upload_rate_limit=args.upload_rate_limit,
         )
         async with peer:
             logger.info("Seeding swarm %s on %s:%d", peer.swarm_id, peer.host, peer.listen_port)
@@ -86,6 +101,7 @@ async def _run_peer_command(args: argparse.Namespace) -> None:
         host=args.host,
         listen_port=args.listen_port,
         upload_enabled=not args.no_upload,
+        upload_rate_limit=args.upload_rate_limit,
     )
     async with peer:
         final_path = await peer.download()

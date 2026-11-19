@@ -13,7 +13,7 @@ This document outlines the small, testable implementation milestones for the P2P
 - [x] **Milestone 5: Peer TCP Connection & Handshake Engine** (**COMPLETED - TESTED** - 2026-11-05)
 - [x] **Milestone 6: Download Scheduler & Swarm Orchestration** (**COMPLETED - TESTED** - 2026-11-09)
 - [x] **Milestone 7: End-to-End Swarm Integration & Seeder CLI** (**COMPLETED - TESTED** - 2026-11-17)
-- [ ] **Milestone 8: Client-Server Baseline & Performance Benchmarking** (PARTIALLY IMPLEMENTED)
+- [x] **Milestone 8: Client-Server Baseline & Performance Benchmarking** (**COMPLETED - TESTED** - 2026-11-20)
 
 ---
 
@@ -138,14 +138,23 @@ This document outlines the small, testable implementation milestones for the P2P
 - **Deliverables:**
   - [x] Client-server baseline peer option and CLI flag (tracker schema unchanged;
     [ADR 0006](adr/0006-download-only-baseline.md)).
-  - [ ] Shared token-bucket upload limits and transfer metric counters.
-  - `bench/run_experiments.py` (Automated workload runner exporting CSV data).
-  - `bench/plot_results.py` (Headless Matplotlib chart generator).
+  - [x] Shared token-bucket upload limits (`TokenBucketRateLimiter`, CLI `--upload-rate-limit`).
+  - [x] Transfer metric counters (`bytes_uploaded`, `bytes_downloaded`, `total_retries`, `chunk_hash_failures`, duration, throughput).
+  - [x] `bench/run_experiments.py` (N=1,2,4,8 sweep, warmups, seeded order, fresh resources, raw CSV).
+  - [x] `bench/plot_results.py` (Headless charts, mean/sample SD, derived summary and trial audit).
 - **Acceptance Criteria:**
   - Baseline clients verify downloads using the P2P transfer path while sending
     no chunk advertisements or PIECE payloads, including after completion.
+  - Token-bucket upload rate limiter throttles aggregate peer uploading with deterministic clock support and safe cancellation.
+  - Transfer metric counters record upload/download volumes, retry counts, integrity failures, and completion time per node.
   - Experiments run across varying client counts (e.g. 1, 2, 4, 8 clients) with 5 repetitions per config.
   - CSV dataset committed in `bench/results/` and plots generated in `bench/plots/`.
-- **Current scope:** Baseline controls and correctness tests are implemented.
-  Rate limiting, metrics, runner, dataset, and plots remain planned; no benchmark
-  measurements have been collected. See `docs/project-status.md` for validation.
+- **Current scope:** Baseline controls, upload rate limiting, transfer metrics,
+  workload runner and plot analysis are implemented with correctness coverage.
+  The full N=1,2,4,8 sweep ran with 5 measured repetitions plus 1 warmup per
+  configuration: 48 trials, 180 verified client observations, CSV and four plots
+  generated. The raw CSV is versioned alongside the runner, satisfying the
+  dataset acceptance step; generated plots remain reproducible and ignored.
+  See `docs/experiments.md` for results and exact commands, and
+  `docs/project-status.md` for validation. Real-network/multi-process performance
+  remains outside this loopback experiment.
