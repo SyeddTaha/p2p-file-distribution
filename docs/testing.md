@@ -343,6 +343,39 @@ expiry using the fake clock.
 The benchmark API checks eight configurations, five measured repetitions each and
 the recorded 48-trial audit, without generating new data. Run
 `node --check src/p2p/web/static/app.js` for JavaScript syntax. Browser/visual QA
-was unavailable because the Computer Use native pipe could not connect; manually
-check file selection, navigation, keyboard focus and mobile table scrolling using
-[web-ui.md](web-ui.md).
+was unavailable during the original console implementation because the Computer
+Use native pipe could not connect. The redesign subsequently used the installed
+Chrome through its local DevTools interface, as described below.
+
+### Frontend redesign browser checks
+
+```powershell
+node --check src/p2p/web/static/app.js
+node --check tests/browser/console.mjs
+node tests/browser/console.mjs
+```
+
+Requires the existing project virtualenv, a Node runtime with built-in WebSocket
+(the verified runtime was v23.6.0), and installed Chrome. No npm package, browser
+download or Internet access is used. The default Chrome path is its standard
+Windows installation; set `P2P_CHROME` to an already installed browser executable
+when needed. The fixture launcher uses `.venv/Scripts/python.exe` and is currently
+Windows-specific. This check is separate from pytest.
+
+The harness reuses unchanged E2E process context managers for ephemeral loopback
+tracker/console servers, manages an isolated headless browser profile, submits
+real forms with temporary source/manifest files and verifies exported SHA-256.
+It covers navigation/history, import guards, caps, baseline, cancellation,
+completed-peer relay, network inspection/focus/scroll retention, recorded charts,
+responsive overflow and console/tracker failure/recovery. Negative transport
+tests fail requests without fabricating application data. Normal workflows are
+checked for JS exceptions, CSP violations, external requests and loading errors.
+
+`--baseline` captures the four current routes without transfers;
+`--navigation-only` checks the skip-link regression. Generated screenshots,
+failure diagnostics and the latest report are ignored under
+`output/ui-redesign/`; source files and downloads remain out of Git. Test files
+use an OS temporary directory. Fixtures require graceful server shutdown.
+
+See [redesign verification](frontend-redesign-verification.md) for actual command
+results and the distinction between browser and API-only fault coverage.
