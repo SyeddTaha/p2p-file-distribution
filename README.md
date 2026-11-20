@@ -1,150 +1,152 @@
 # BitTorrent-Style P2P File Distribution System
 
-A Python 3.12+ project for a BitTorrent-style Peer-to-Peer (P2P) file distribution system.
+A **Python peer-to-peer file distribution system** that splits files into verified chunks and distributes them across multiple peers. Built with TCP sockets, asynchronous networking, a FastAPI tracker, and a local web console.
 
-Milestones 1 through 7 are implemented and tested. Milestone 7 adds tracker-aware
-peer lifecycle management, verified chunk seeding, four CLI commands, and a
-loopback end-to-end transfer with three concurrent leechers plus a staged
-verified leecher-to-leecher transfer. Its final Windows multi-process smoke
-test also verified a 1 MiB download, byte/hash equality, Ctrl+C shutdown, and
-tracker peer removal. See [project status](docs/project-status.md) and the
-[testing guide](docs/testing.md) for results and the reproducible procedure.
-Milestone 8 includes tested download-only baseline controls, upload rate limits,
-transfer metrics, a reproducible N=1,2,4,8 experiment runner and headless plots.
-See [experiments](docs/experiments.md) for commands, recorded results and limits.
-The default sweep has run: 48 trials and 180 verified client observations in
-[`bench/results/experiments.csv`](bench/results/experiments.csv). Measurements
-are limited to one host with loopback TCP and an in-process tracker.
-The [course report](docs/course-report.md) and [demo runbook](docs/demo.md)
-provide the measured narrative, four figures, live CLI steps and a tested
-automated fallback. Export the report with
-`python docs/build_course_report.py --pdf` after regenerating plots; outputs are
-`output/pdf/course-report.pdf` and self-contained `output/course-report.html`.
+The project demonstrates how peers can **download and redistribute chunks**, reducing dependence on a single source as the swarm grows. It also includes a client-server baseline and reproducible performance experiments.
 
----
+**Tech stack:** Python 3.12+ · `asyncio` · TCP · FastAPI · HTTPX · SHA-256 · HTML/CSS/JavaScript · pytest
 
-## 1. Project Overview & Architecture
+## Interface
 
-- **Implemented and tested:** Length-prefixed TCP framing and message codecs (`HANDSHAKE`, `BITFIELD`, `REQUEST`, `PIECE`, `HAVE`); FastAPI Tracker HTTP control plane with in-memory registry and stale-peer expiry; v1 manifest creation/validation and verified chunk storage; bounded peer server and peer connections; scheduler and `SwarmDownloader`; `SwarmPeer` tracker announcements, discovery, seeding, multi-peer downloads, and lifecycle cleanup; CLI and a tracker + seeder + three-leecher loopback E2E test; download-only baseline mode (`--no-upload`); token-bucket upload rate limiter (`TokenBucketRateLimiter`, `--upload-rate-limit`).
-- **Benchmarking:** Automated Client-Server/P2P parameter sweeps, append-only raw CSV, whole-trial failure auditing, and plots with mean/sample-SD error bars (Milestone 8).
+The local web console provides a visual interface for file transfers, swarm inspection, and recorded benchmarks. It runs on top of the same P2P engine used by the CLI.
 
----
+### Dashboard
 
-## 2. Directory Structure
+![Dashboard showing tracker membership, active swarms and verified local transfer totals](docs/assets/readme/01-dashboard.png)
 
-```
-├── .agents/skills/   # Shareable project & ecosystem AI skills (12 skills)
-├── bench/            # Experiment runner, plotting script, raw results and generated plots
-├── context/          # Original project requirements specification
-├── docs/             # Technical specifications, ADRs, status, testing guides
-│   ├── adr/          # Architecture Decision Records
-│   ├── architecture.md
-│   ├── cli.md
-│   ├── protocol.md
-│   ├── manifest-format.md  # Implemented v1 format specification
-│   ├── implementation-plan.md
-│   ├── testing.md
-│   ├── experiments.md
-│   └── project-status.md
-├── src/p2p/          # Current application package
-│   ├── tracker/      # Tracker HTTP control plane and swarm registry
-│   ├── peer/         # Peer networking, download scheduler, worker and coordinator
-│   ├── protocol/     # Implemented wire framing codec and message definitions
-│   ├── storage/      # Implemented manifest validation and verified file storage
-│   └── config.py     # System constants, defaults, and timeouts
-├── tests/            # Automated test suite
-│   ├── unit/         # Codec, manifest, storage, scheduler, and worker unit tests
-│   ├── integration/  # Tracker API and peer loopback tests
-│   └── e2e/          # Tracker + seeder + concurrent leecher transfer tests
-├── pyproject.toml    # Dependencies and tool configurations (pytest, ruff, mypy)
-├── requirements.txt  # Quick teammate dependency requirements file
-└── README.md         # Quick start & repository guide
+*Tracker health, active peers and swarms, local payload counters, and transfer verification status.*
+
+### File sharing and downloading
+
+![File transfer page with manifest creation, manifest import and peer configuration](docs/assets/readme/02-file-transfer.png)
+
+*Create or import a manifest, then start a seeding or downloading peer. Advanced settings include upload limits and download-only baseline mode.*
+
+![Transfer monitoring card with chunk progress, verification status and peer controls](docs/assets/readme/03-transfer-monitoring.png)
+
+*Monitor verified chunks, transfer metrics, integrity checks and peer lifecycle controls.*
+
+### Peer network
+
+![Peer network view showing swarm membership and local peer connection inspection](docs/assets/readme/04-peer-network.png)
+
+*Inspect tracker membership, local TCP connections and verified chunk sources. Tracker membership is not proof that a peer contributed data.*
+
+### Performance experiments
+
+![Experiment results comparing baseline and P2P completion times and throughput](docs/assets/readme/05-performance-experiments.png)
+
+*Recorded client-server versus P2P experiments, with sample standard deviation and throughput comparisons.*
+
+## How it works
+
+```mermaid
+flowchart LR
+    S[Seeder] <-->|Chunk requests and verified data over TCP| P1[Peer A]
+    S <-->|TCP| P2[Peer B]
+    P1 <-->|Redistributed chunks over TCP| P2
+    S -.->|Announce / discover| T[FastAPI Tracker]
+    P1 -.->|Announce / discover| T
+    P2 -.->|Announce / discover| T
 ```
 
----
+1. **Create a manifest:** Divide a file into chunks and record SHA-256 hashes.
+2. **Discover peers:** Peers announce themselves to the HTTP tracker and discover swarm members.
+3. **Download chunks:** Peers request chunks over independent TCP connections, with bounded concurrency and retry handling.
+4. **Verify integrity:** Each received chunk is checked before acceptance; the completed file is checked against its expected hash.
+5. **Redistribute:** A completed P2P downloader can continue seeding verified data to other peers until stopped.
 
-## 3. Quick Start for Teammates & Developers
+The tracker is the **control plane** for discovery; file payloads travel directly between TCP peers. The current implementation uses an externally shared manifest and does not provide automatic NAT traversal or browser-to-browser transfers.
 
-### Requirements
-- Python 3.12 or higher
+## Features
 
-### Environment Setup (Single Command Step)
+- **Multi-peer downloads:** Concurrent chunk requests, scheduling, retries and peer failover.
+- **Data integrity:** SHA-256 verification for individual chunks and completed files.
+- **Peer lifecycle:** Tracker announcements, heartbeats, seeding and clean shutdown.
+- **Upload control:** Token-bucket rate limiting and a download-only baseline mode.
+- **Web console and CLI:** Real transfers, peer inspection and benchmark results.
+- **Reproducible experiments:** Client-server versus P2P trials for 1, 2, 4 and 8 clients.
+
+## Benchmark results
+
+Recorded **10 MiB** file distribution experiments, using **256 KiB** chunks and five included trials per configuration:
+
+| Clients | Baseline completion | P2P completion | P2P throughput | Peer upload share |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 9.105 s | 9.073 s | 1.102 MiB/s | 0.00% |
+| 2 | 19.137 s | 11.329 s | 1.770 MiB/s | 38.75% |
+| 4 | 39.143 s | 15.414 s | 2.600 MiB/s | 63.75% |
+| 8 | 79.292 s | 23.518 s | 3.411 MiB/s | 77.81% |
+
+At **8 clients**, mean completion time was approximately **70.3% lower** than the baseline (**3.37× speedup**). These results come from a **single Windows host using loopback TCP and an in-process ASGI tracker**. They demonstrate behavior in the test environment, not measured internet or LAN performance. See [experiment methodology](docs/experiments.md) and [raw results](bench/results/experiments.csv).
+
+## Quick start
+
+**Requirements:** Python 3.12 or newer.
 
 ```bash
-# 1. Create a virtual environment
 python -m venv .venv
+```
 
-# 2. Activate the virtual environment
-# On Windows (PowerShell):
-.venv\Scripts\Activate.ps1
-# On Linux / macOS:
+Activate the environment:
+
+```powershell
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+```
+
+```bash
+# Linux / macOS
 source .venv/bin/activate
+```
 
-# 3. Install project dependencies via requirements.txt
+Install dependencies:
+
+```bash
 pip install -r requirements.txt
 ```
 
----
-
-## 4. Development & Testing Commands
+**1. Start the tracker** in one terminal:
 
 ```bash
-# Run full automated test suite
+python -m p2p.cli tracker-start --host 127.0.0.1 --port 8000
+```
+
+**2. Start the web console** in another terminal:
+
+```bash
+python -m p2p.web --port 8090
+```
+
+Open **http://127.0.0.1:8090**. Import a file to create a manifest and start a seeder. For a second independent peer, open another console process with a different workspace and port:
+
+```bash
+python -m p2p.web --port 8092 --workspace downloads/web-console-2
+```
+
+Import the saved manifest into the second console and start a download. The file is transferred over TCP and verified before being offered for download.
+
+For command-line-only usage, see the [CLI guide](docs/cli.md).
+
+## Testing
+
+```bash
 pytest
-
-# Run linting checks
 ruff check .
-
-# Check formatting across implemented source and tests
-ruff format --check src/p2p tests bench docs/build_course_report.py
-
-# Run static type checking
-mypy src/p2p tests bench docs/build_course_report.py
 ```
 
-## 5. CLI Quick Start
+The project includes unit, integration and end-to-end tests covering the protocol, manifest validation, storage, tracker, peer transfers and download behavior. For verification procedures, see [testing](docs/testing.md).
 
-Install the package in editable mode. Run `create-manifest` once, then start
-the tracker, seeder, and each leecher in separate terminals:
+## Documentation
 
-```powershell
-p2p tracker-start --host 127.0.0.1 --port 8000
-p2p create-manifest .\payload.bin --output .\payload.manifest.json
-p2p seed-file .\payload.manifest.json .\payload.bin --tracker-url http://127.0.0.1:8000
-p2p download-file .\payload.manifest.json --download-dir .\downloads --tracker-url http://127.0.0.1:8000
-```
+- [Architecture](docs/architecture.md)
+- [Wire protocol](docs/protocol.md)
+- [Manifest format](docs/manifest-format.md)
+- [Web console guide](docs/web-ui.md)
+- [Experiments and limitations](docs/experiments.md)
+- [Course report](docs/course-report.md)
+- [Demo guide](docs/demo.md)
 
-`seed-file` and `download-file` remain running to serve the swarm and stop on
-Ctrl+C. Use `download-file --no-upload` on every client for the origin-only
-baseline; those clients stay online without serving chunks. Both commands accept
-`--upload-rate-limit <bytes/sec>` to cap outbound bandwidth via token bucket.
-Distribute the manifest file to downloaders out of band. See the
-[CLI guide](docs/cli.md) for command behavior and options.
+---
 
-## 6. Active Phase & Documentation Status
-
-An optional local web console demonstrates the existing engine without changing
-the CLI. Start the tracker above, run `python -m p2p.web`, and open
-`http://127.0.0.1:8080`. It provides real transfers, integrity/progress snapshots,
-peer inspection and recorded benchmark comparisons. See [web UI](docs/web-ui.md)
-for two-console demos and bounds, and [ADR 0009](docs/adr/0009-local-web-console.md)
-for the frontend exception.
-
-- **Current state:** Milestones 1–8 are tested. The measured course report and demo runbook are prepared. See [project status](docs/project-status.md) for verification and [experiments](docs/experiments.md) for measurement scope.
-- **Completed milestones:**
-  - Milestone 1 — Project Foundation & Tooling Setup
-  - Milestone 2 — Wire Framing Codec & Protocol Messages
-  - Milestone 3 — Manifest Engine & Storage Integrity
-  - Milestone 4 — Tracker HTTP Control Plane
-  - Milestone 5 — Peer TCP Connection Engine
-  - Milestone 6 — Download Scheduler & Swarm Orchestration
-  - Milestone 7 — End-to-End Swarm Integration & Seeder CLI
-  - Milestone 8 — Client-Server Baseline & Performance Benchmarking
-- **Latest verification:** See [project status](docs/project-status.md) for the latest full suite, focused E2E checks, CLI verification, and lint/type/format results.
-- **AI guidance:** [AGENTS.md](AGENTS.md)
-- **Architecture overview:** [docs/architecture.md](docs/architecture.md)
-- **Protocol specification:** [docs/protocol.md](docs/protocol.md)
-- **Manifest specification:** [docs/manifest-format.md](docs/manifest-format.md)
-- **Implementation plan:** [docs/implementation-plan.md](docs/implementation-plan.md)
-- **CLI guide:** [docs/cli.md](docs/cli.md)
-- **Project status:** [docs/project-status.md](docs/project-status.md)
+*The web console is local-first; the benchmarks are controlled single-host measurements.*

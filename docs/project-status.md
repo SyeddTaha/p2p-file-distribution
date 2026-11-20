@@ -7,6 +7,16 @@ separate-process HTTP/TCP scenarios and the redesigned browser workflows. See
 [web UI](web-ui.md), [design system](../DESIGN.md), and
 [ADR 0009](adr/0009-local-web-console.md).
 
+The documentation-only [complete handbook](P2P_COMPLETE_PROJECT_HANDBOOK.md) and
+three companion guides are **Implemented** and source-checked at `121b31f`.
+The fresh audit passed 390 pytest cases and eight isolated three-console API
+rehearsal groups. Its two fresh browser runs stopped on the same stale-payload
+DOM assertion after four groups; the 13-group results below are historical,
+not a current rerun result. See the [coverage/evidence checklist](P2P_HANDBOOK_COVERAGE_CHECKLIST.md)
+for exact commands, the polling synchronization gap, occupied-port fallback,
+Mermaid rendering limitation and verified Notion publication. No production,
+frontend, test, dependency or raw benchmark file changed in the handbook task.
+
 The user-approved reference-led frontend redesign is **Tested**. The latest full
 suite passed 390 tests with one existing upstream warning; the browser harness
 passed 13 workflow groups, including real transfers, baseline, relay, keyboard
@@ -130,6 +140,11 @@ mypy src/p2p
 | `docs/course-report.md` | Created | Course narrative, four measured figures, tables, reliability evidence and limits; snapshot `886c014` |
 | `docs/demo.md` | Created | 8-10 minute presenter runbook, staged CLI relay, cleanup, automated fallback and smoke commands |
 | `docs/build_course_report.py` | Tested | Standard-library Markdown/HTML export and optional PDF using installed Chrome; generated output ignored |
+| `docs/P2P_COMPLETE_PROJECT_HANDBOOK.md` | Implemented | Self-contained 21-chapter study guide, 100 answered viva questions, diagrams, glossary, code-grounded algorithms and recorded evidence |
+| `docs/P2P_VIVA_QUICK_REVISION.md` | Implemented | Independent concise revision guide with formulas, protocol, metrics and limitations |
+| `docs/P2P_DEMO_SCRIPT.md` | Implemented | Three-console setup, transfer/relay/rate/baseline demonstrations, narration, troubleshooting and explicit rehearsal scope |
+| `docs/P2P_SOURCE_CODE_MAP.md` | Implemented | 31 Python files/270 definitions, frontend handlers, argument/return/failure boundaries and execution chains |
+| `docs/P2P_HANDBOOK_COVERAGE_CHECKLIST.md` | Implemented | Investigation checklist, exact new verification outcomes, unresolved gaps and Notion publication evidence |
 
 ---
 
