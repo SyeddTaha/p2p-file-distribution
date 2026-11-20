@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Local control console for verified P2P file distribution">
+  <title>P2P console</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#dashboard">P2P console</a>
+    <nav aria-label="Main navigation">
+      <a href="#dashboard" aria-current="page">Dashboard</a>
+      <a href="#transfer">File Transfer</a>
+      <a href="#network">Peer Network</a>
+      <a href="#experiments">Experiments</a>
+    </nav>
+    <span class="local-label">Local workspace</span>
+  </header>
+  <main>
+    <div id="connection-message" class="notice" role="status">Connecting to the console…</div>
+    <div id="error" class="error" role="alert" hidden></div>
+
+    <section id="dashboard" aria-labelledby="dashboard-title">
+      <div class="page-heading"><div><h1 id="dashboard-title">Dashboard</h1>
+        <p class="muted">Tracker membership and transfers managed by this console.</p></div>
+        <button id="refresh" type="button">Refresh</button>
+      </div>
+      <div class="tracker-line"><strong>Tracker</strong><span id="tracker-status">Checking…</span>
+        <code id="tracker-url"></code><span id="tracker-error" class="muted"></span></div>
+      <dl id="summary" class="summary"></dl>
+      <h2>Local transfers</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>File / peer</th><th>State</th><th>Verified progress</th><th class="numeric">Downloaded</th><th class="numeric">Uploaded</th><th>Final SHA-256</th></tr></thead>
+        <tbody id="dashboard-transfers"><tr><td colspan="6" class="empty">Loading transfers…</td></tr></tbody>
+      </table></div>
+      <p class="muted note">Counters are verified payload bytes for local peers. Connections and tracker membership are separate observations. No global traffic rate is inferred.</p>
+    </section>
+
+    <section id="transfer" aria-labelledby="transfer-title" hidden>
+      <div class="page-heading"><div><h1 id="transfer-title">File Transfer</h1>
+        <p class="muted">Import a source or manifest, then start an independent TCP peer.</p></div></div>
+      <div class="form-grid">
+        <form id="source-form" class="panel">
+          <h2>Create a manifest</h2>
+          <label for="source-file">Source file</label>
+          <input id="source-file" type="file" required>
+          <p class="muted">Maximum 128 MiB. The browser copies the selected file into this console's workspace. SHA-256 hashing runs on the server.</p>
+          <button class="primary" type="submit">Import file and hash</button>
+          <p id="source-feedback" class="feedback" role="status"></p>
+        </form>
+        <form id="manifest-form" class="panel">
+          <h2>Import a manifest</h2>
+          <label for="manifest-file">Manifest JSON</label>
+          <input id="manifest-file" type="file" accept=".json,application/json" required>
+          <p class="muted">Maximum 4 MiB. Schema, file name, chunk sizes, and hashes are validated before the manifest can be used.</p>
+          <button type="submit">Import manifest</button>
+          <p id="manifest-feedback" class="feedback" role="status"></p>
+        </form>
+      </div>
+      <form id="peer-form" class="panel peer-form">
+        <h2>Start a peer</h2>
+        <div class="fields">
+          <div><label for="asset">File manifest</label><select id="asset" required><option value="">Import a file or manifest first</option></select></div>
+          <div><label for="kind">Operation</label><select id="kind"><option value="download">Download</option><option value="seed">Seed source file</option></select></div>
+          <div><label for="upload-rate">Upload limit (bytes/s)</label><input id="upload-rate" type="number" min="1" max="1073741824" step="1" placeholder="Unlimited"></div>
+        </div>
+        <label class="checkbox"><input id="download-only" type="checkbox"> Download-only baseline (disable chunk uploads)</label>
+        <p class="muted">For an origin-only baseline, enable download-only on every client and keep one uploading seed. Rate limits apply across a peer's connections with an initial one-second burst. Settings apply to each new peer.</p>
+        <button id="start-peer" class="primary" type="submit" disabled>Start peer</button>
+        <p id="peer-feedback" class="feedback" role="status"></p>
+      </form>
+      <h2>Imported files and manifests</h2>
+      <div class="table-wrap"><table><thead><tr><th>File</th><th>Swarm ID / expected SHA-256</th><th>Source</th><th>Manifest</th></tr></thead><tbody id="assets"></tbody></table></div>
+      <h2>Peers and transfer controls</h2>
+      <p class="muted">Completed P2P downloads continue seeding until stopped. Each download uses a separate destination. Stopping retains files; resume is unavailable.</p>
+      <div id="transfer-details"></div>
+    </section>
+
+    <section id="network" aria-labelledby="network-title" hidden>
+      <div class="page-heading"><div><h1 id="network-title">Peer Network</h1>
+        <p class="muted">Tracker discovery, TCP connections, and measured chunk sources.</p></div></div>
+      <h2>Active swarm membership</h2>
+      <p class="muted">Seeder means the file is complete. Remote upload capability is not advertised by the tracker; a complete download-only client may also be marked as a seeder.</p>
+      <div id="swarms"></div>
+      <h2>Local peer connections</h2>
+      <label for="network-peer">Inspect peer</label><select id="network-peer"></select>
+      <div id="network-details"></div>
+      <p class="muted note">Sources list verified payload received on outbound connections. An idle connection may serve later. Discovery occurs at download start; the current engine does not reconnect to peers joining mid-download.</p>
+    </section>
+
+    <section id="experiments" aria-labelledby="experiments-title" hidden>
+      <div class="page-heading"><div><h1 id="experiments-title">Experiments</h1>
+        <p class="muted">Recorded client-server baseline and P2P trials.</p></div><button id="reload-experiments" type="button">Reload results</button></div>
+      <p id="experiment-status" role="status">Loading recorded results…</p>
+      <p id="experiment-caption" class="muted caption"></p>
+      <p id="experiment-audit" class="muted"></p>
+      <div class="table-wrap"><table><thead><tr><th>N</th><th>Mode</th><th class="numeric">Trials</th><th class="numeric">Completion time (s)</th><th class="numeric">Aggregate MiB/s</th><th class="numeric">Peer upload share</th></tr></thead><tbody id="experiment-rows"></tbody></table></div>
+      <div class="chart-grid">
+        <figure><figcaption>Completion time (mean ± sample SD)</figcaption><svg id="time-chart" viewBox="0 0 520 280" role="img" aria-label="Recorded completion time by number of clients"></svg></figure>
+        <figure><figcaption>Aggregate throughput (mean ± sample SD)</figcaption><svg id="throughput-chart" viewBox="0 0 520 280" role="img" aria-label="Recorded throughput by number of clients"></svg></figure>
+      </div>
+      <p class="legend"><span class="legend-baseline">Baseline</span><span class="legend-p2p">P2P</span></p>
+      <div id="exclusions"></div>
+      <p class="muted note">Results come from the existing harness on one host using loopback TCP and an in-process ASGI tracker. Warmups and failed or incomplete trials are excluded as whole trials and retained in the audit. These measurements do not establish LAN/WAN performance. Run experiments from the existing terminal harness; this console only reads results.</p>
+    </section>
+  </main>
+  <footer>Peer file distribution uses TCP · UI state refreshes every second · No external assets</footer>
+</body>
+</html>

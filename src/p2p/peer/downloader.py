@@ -273,8 +273,21 @@ class SwarmDownloader:
         self._retired_bytes_downloaded: int = 0
         self._retired_retries: int = 0
         self._retired_hash_failures: int = 0
+        self._retired_downloaded_from: dict[str, int] = {}
         self._start_time: float | None = None
         self._end_time: float | None = None
+
+    @property
+    def downloaded_from(self) -> dict[str, int]:
+        """Copy verified payload contributions, including retired connections."""
+        return {
+            **{peer: count for peer, count in self._retired_downloaded_from.items() if count > 0},
+            **{
+                peer_id: worker.bytes_downloaded
+                for peer_id, worker in self._workers.items()
+                if worker.bytes_downloaded > 0
+            },
+        }
 
     @property
     def bytes_downloaded(self) -> int:
@@ -353,6 +366,7 @@ class SwarmDownloader:
         connection = self._active.pop(peer_id, None)
         worker = self._workers.pop(peer_id, None)
         if worker is not None:
+            self._retired_downloaded_from[peer_id] = worker.bytes_downloaded
             self._retired_bytes_downloaded += worker.bytes_downloaded
             self._retired_retries += worker.retry_count
             self._retired_hash_failures += worker.chunk_hash_failures

@@ -2,6 +2,12 @@
 
 > Last updated: 2026-11-20. Milestones 1-8 are implemented and tested. Milestone 8's full default loopback sweep ran: 48 trials, 180 verified client observations, raw CSV and plots generated. The implementation and raw dataset are versioned together on `feat/download-only-baseline`.
 
+The optional local console on `feat/local-web-console` is **Tested** through API
+and separate-process HTTP/TCP scenarios. Browser visual/interaction QA remains
+unverified because the Computer Use native pipe was unavailable. See
+[web UI](web-ui.md), [design system](../DESIGN.md), and
+[ADR 0009](adr/0009-local-web-console.md).
+
 ---
 
 ## 1. Project Phase & Milestone Summary
@@ -48,6 +54,9 @@ mypy src/p2p
 
 | Area | Feature | State | Tests run? | Notes / Verification Command |
 |---|---|---|---|---|
+| Web console | Four-section local FastAPI/HTML/CSS/JS UI | **Tested** | Yes | Real TCP API/process tests cover seeding, downloading, integrity, relay, baseline, rate caps and shutdown; browser visual QA remains unverified; see local console log below |
+| Instrumentation | Live copied peer snapshots and tracker swarm listing | **Tested** | Yes | Exact verified progress, final integrity state, source contributions, observed connections and fake-clock expiry |
+| Web console | Recorded N=1,2,4,8 benchmark display | **Tested** | Yes | Existing CSV, shared pure analysis, eight summary rows and 48-trial audit; no new measured sweep |
 | Foundation | Package layout & pyproject.toml | **Tested** | Yes | `pytest`, `ruff check .`, `mypy src/p2p` passed |
 | Foundation | `requirements.txt` environment setup | **Tested** | Yes | Verified dependency locking & installation |
 | Protocol | Frame codec (length-prefixed) | **Tested** | Yes | `read_frame`/`write_frame`, bounds check before allocation |
@@ -109,6 +118,9 @@ mypy src/p2p
 | `docs/adr/0002-wire-protocol-framing-and-limits.md` | Created | Framing format & security bounds |
 | `docs/adr/0003-manifest-v1-and-storage-policy.md` | Created | Manifest v1, empty-file and storage policies |
 | `docs/project-status.md` | Updated | Current validation, measured loopback benchmark state and known limitations |
+| `docs/course-report.md` | Created | Course narrative, four measured figures, tables, reliability evidence and limits; snapshot `886c014` |
+| `docs/demo.md` | Created | 8-10 minute presenter runbook, staged CLI relay, cleanup, automated fallback and smoke commands |
+| `docs/build_course_report.py` | Tested | Standard-library Markdown/HTML export and optional PDF using installed Chrome; generated output ignored |
 
 ---
 
@@ -247,7 +259,92 @@ results and limitations are recorded in `docs/experiments.md`. Generated
 PNGs/derived CSVs remain ignored and are reproducible with the plotting command
 above.
 
+### Course report and demo preparation (2026-11-20)
+
+Prepared the editable report and demo runbook using the committed experiment
+`m8-loopback-20261120` and implementation snapshot `886c014`. Exported a
+self-contained HTML and seven-page PDF containing all four measured plots.
+Every PDF page was rendered with the installed Windows PDF renderer and
+visually inspected; the first export's methodology overflow was corrected.
+No software or dependencies were installed. Generated exports are ignored
+under `output/`; rebuild with `python docs/build_course_report.py --pdf` after
+plot regeneration. Chrome/Chromium must already be installed for PDF export;
+HTML export uses only the standard library.
+
+| Command | Actual result |
+|---|---|
+| `.\.venv\Scripts\python.exe -m bench.plot_results --experiment-id m8-loopback-20261120` | Exited 0; four measured plots regenerated without recollecting or changing raw data |
+| Demo's selected E2E/corruption/disconnect pytest command in `docs/demo.md` | 5 passed in 1.93s |
+| Demo input generator and `python -m p2p.cli create-manifest ...` commands in `docs/demo.md` (venv Python) | Created 1 MiB source and manifest under ignored `downloads/course-demo/` |
+| Tiny runner/plot commands in `docs/demo.md` | Both exited 0; six verified client observations, four smoke plots plus summary/audit |
+| `.\.venv\Scripts\python.exe docs/build_course_report.py --pdf` | Exited 0; `Exported output/pdf/course-report.pdf`; final PDF has seven pages and correct 1/7..7/7 numbering |
+| `.\.venv\Scripts\python.exe -m pytest tests/unit/test_course_report_export.py` | 2 passed in 0.76s; HTML escaping/embedding, page breaks and missing-browser handling |
+| `.\.venv\Scripts\python.exe -m pytest -ra` | 378 passed, 1 upstream warning in 26.17s |
+| `.\.venv\Scripts\python.exe -m ruff check docs/build_course_report.py tests/unit/test_course_report_export.py` | All checks passed! |
+| `.\.venv\Scripts\python.exe -m mypy docs/build_course_report.py tests/unit/test_course_report_export.py` | Success: no issues found in 2 source files |
+| `.\.venv\Scripts\python.exe -m ruff check .` (while concurrent feature work was appearing) | Not clean: issues in unrelated peer/web edits; those files left untouched |
+| `.\.venv\Scripts\python.exe -m ruff format --check src/p2p tests bench docs/build_course_report.py` | Not clean: 5 files in concurrent feature work would be reformatted; 51 already formatted |
+| `.\.venv\Scripts\python.exe -m mypy src/p2p tests bench docs/build_course_report.py` | Not clean: 2 export-attribute errors in `tests/unit/test_benchmarks.py` following concurrent benchmark refactoring |
+
+The four-terminal CLI runbook is prepared but was not newly rehearsed in full
+interactive terminals during this task. Its component CLI/relay behaviors are
+covered by tests and the historical Windows smoke. Do not interpret the tiny
+demo's timing or test runtime as benchmark evidence. The report explicitly
+describes the committed measurement snapshot, not concurrent feature edits.
+
+Documentation gaps corrected: the CLI guide still called rate limiting and
+the runner planned; README omitted Milestone 8 from its completed list; the
+architecture guide named a nonexistent `safe_target()` helper. Other specs
+were left unchanged.
+
+### Local console verification (2026-11-20)
+
+Work on `feat/local-web-console`; existing dependencies only. No new software was
+installed and no new performance sweep was run. Verification completed before
+the implementation commit. Existing report/demo documents were preserved. The
+original CLI and TCP wire protocol are unchanged.
+
+| Command | Actual result |
+|---|---|
+| `.\.venv\Scripts\python.exe -m pytest tests/integration/test_web_console.py -x -o addopts='' -q` (initial) | 1 failed, 1 passed; source contributions included a zero-byte baseline connection; excluded zero-byte entries from the copied source map |
+| Same API file after correction | 8 passed; after final-hash failure coverage, 9 passed |
+| `.\.venv\Scripts\python.exe -m pytest tests/integration/test_web_console.py tests/e2e/test_web_http_transfer.py tests/integration/test_tracker_api.py -o addopts='' -q` | 26 passed in 41.76s |
+| `.\.venv\Scripts\python.exe -m pytest -ra` (before final cancellation regression) | 389 passed, 1 upstream Starlette/httpx warning in 82.51s |
+| `.\.venv\Scripts\python.exe -m pytest tests/unit/test_web_service.py -o addopts='' -q` | First 1 failed: worker validation error replaced cancellation; after joining with `gather(return_exceptions=True)`, 1 passed in 1.25s |
+| `.\.venv\Scripts\python.exe -m pytest tests/integration/test_web_console.py tests/unit/test_web_service.py -o addopts='' -q` (5 consecutive runs) | 10 passed each; 50 executions; 4.70s, 3.56s, 4.80s, 3.85s, 3.30s |
+| `.\.venv\Scripts\python.exe -m p2p.web --help` | Exited 0; listed port, tracker URL and workspace options |
+| `.\.venv\Scripts\python.exe bench/plot_results.py --help` | Exited 0; existing direct plotting entry point preserved |
+| `.\.venv\Scripts\python.exe -m pytest -ra` (final code) | **390 passed, 1 warning in 61.51s**; existing upstream Starlette/httpx warning |
+| `.\.venv\Scripts\python.exe -m ruff check .` (final code) | **All checks passed!** |
+| `.\.venv\Scripts\python.exe -m ruff format --check src/p2p tests bench` | **58 files already formatted** |
+| `.\.venv\Scripts\python.exe -m mypy src/p2p tests bench` | **Success: no issues found in 58 source files** |
+| `node --check src/p2p/web/static/app.js` | Exited 0; no output |
+| `git diff --check` | Exited 0; no whitespace errors; LF/CRLF conversion notice for `docs/experiments.md` |
+
+The process E2E starts a real Uvicorn tracker and two independent console
+processes on ephemeral loopback HTTP ports. It imports a 1 MiB file, seeds with
+a 512 KiB/s cap, verifies downloaded SHA-256 and bytes, stops the origin and
+checks an actual completed-peer TCP relay, then verifies two baseline clients
+receive only origin payloads and upload none. It reads the real benchmark CSV,
+requires graceful server exit without forced termination and checks that console
+shutdown removes all remaining tracker memberships. API tests additionally cover
+partial verified progress, three baseline clients, final-file corruption, unsafe
+paths/manifests, request guards, limits, missing data, no peers and cancellation.
+
+Initial lint/type issues (formatting and benchmark function re-exports) were
+corrected. Browser screenshot/interaction tests were not run: both browser and
+native Computer Use entry points reported a missing native pipe. JavaScript
+syntax checks and HTTP static-asset delivery are covered, not visual layout.
+
 ## 6. Open Issues & Known Limitations
+
+- The optional web console's browser interactions and responsive visual layout
+  still need manual verification. API and real HTTP/TCP process tests passed.
+- Console files persist in the configured workspace. Catalogs/history are
+  in-memory and do not restore after restart; downloads do not resume. UI source
+  and download sizes are capped at 128 MiB; caps/settings apply at peer creation.
+- Console experiment display needs a source checkout containing the raw CSV and
+  `bench/`; it does not execute experiments or invent unavailable measurements.
 
 - Milestone 3 storage operations are synchronous; async callers must offload large file work and serialize access to a shared `StorageManager`.
 - Full test runs emit one upstream Starlette/httpx deprecation warning; it does not fail tests.
@@ -272,8 +369,9 @@ above.
 ## 8. Next Steps
 
 - Review the Milestone 8 feature branch and merge through a pull request.
-- Prepare the course report/demo from `docs/experiments.md` and regenerate the
-  figures from the versioned raw CSV. Clearly state the loopback/ASGI limits.
+- Course report and demo runbook are prepared: `docs/course-report.md` and
+  `docs/demo.md`; exports are in `output/`. Rehearse the manual four-terminal
+  relay sequence before the live presentation; the automated fallback is tested.
 - Optional follow-up: separate-process or multi-machine benchmarks and repeated
   shutdown testing on other operating systems. These are not required to
   complete the current eight-milestone implementation plan.

@@ -26,3 +26,14 @@ MAX_PEERS_PER_ANNOUNCE: Final[int] = 50
 MAX_PEER_CONNECTIONS: Final[int] = 30
 MAX_INFLIGHT_PER_PEER: Final[int] = 4
 MAX_GLOBAL_INFLIGHT: Final[int] = 32
+
+# Local web console bounds (independent of the existing CLI).
+WEB_MAX_FILE_BYTES: Final[int] = 128 * 1024 * 1024
+WEB_MAX_ASSETS: Final[int] = 64
+WEB_MAX_TRANSFERS: Final[int] = 64
+WEB_MAX_ACTIVE_TRANSFERS: Final[int] = 16
+WEB_MAX_CONCURRENT_IMPORTS: Final[int] = 4
+WEB_MAX_SETTINGS_BYTES: Final[int] = 8192
+WEB_UPLOAD_TIMEOUT_SEC: Final[float] = 120.0
+WEB_TRACKER_TIMEOUT_SEC: Final[float] = 3.0
+WEB_MAX_TRACKER_RESPONSE_BYTES: Final[int] = 4 * 1024 * 1024

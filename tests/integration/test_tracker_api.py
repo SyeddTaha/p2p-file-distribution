@@ -1,5 +1,6 @@
 """Integration tests for the Tracker HTTP control plane using ASGITransport."""
 
+import asyncio
 from collections.abc import AsyncIterator
 
 import httpx
@@ -55,6 +56,33 @@ async def test_health_endpoint(client: httpx.AsyncClient) -> None:
     response = await client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "service": "tracker"}
+
+
+async def test_list_swarms_applies_expiry_without_changing_membership(
+    client: httpx.AsyncClient, fake_clock: FakeClock
+) -> None:
+    async with asyncio.timeout(5):
+        assert (await client.get("/swarms")).json() == []
+        for swarm in (SAMPLE_SWARM_A, SAMPLE_SWARM_B):
+            response = await client.post(
+                "/announce",
+                json={
+                    "swarm_id": swarm,
+                    "peer_id": "snapshot-peer",
+                    "host": "127.0.0.1",
+                    "port": 12345,
+                    "event": "started",
+                    "is_seeder": True,
+                },
+            )
+            assert response.status_code == 200
+        fake_clock.advance(90)
+        snapshot = (await client.get("/swarms")).json()
+        assert len(snapshot) == 2
+        assert all(len(swarm["peers"]) == 1 for swarm in snapshot)
+        assert all(swarm["peers"][0]["is_seeder"] for swarm in snapshot)
+        fake_clock.advance(0.1)
+        assert (await client.get("/swarms")).json() == []
 
 
 # ==============================================================================

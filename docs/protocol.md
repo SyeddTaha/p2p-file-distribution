@@ -125,3 +125,9 @@ Sent strictly once per connection, immediately following a successful `HANDSHAKE
 | `HANDSHAKE_TIMEOUT_SEC` | `5.0` seconds | Timeout for initial handshake exchange |
 | `IDLE_TIMEOUT_SEC` | `60.0` seconds | Idle connection timeout between frames |
 | `STALL_TIMEOUT_SEC` | `15.0` seconds | Read timeout during mid-frame payload receipt |
+
+## Local console boundary
+
+The optional [web console](web-ui.md) launches the existing engine. Its HTTP API
+handles local artifact import/export and controls; swarm payloads use unchanged
+v1 TCP messages. Snapshots introduce no wire messages or framing/version changes.

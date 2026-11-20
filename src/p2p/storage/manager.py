@@ -46,12 +46,20 @@ class StorageManager:
         self.part_path = self.target_path.with_name(f"{self.target_path.name}.part")
         self._verified_chunks: set[int] = set()
         self._finalized = False
+        self._integrity_failed = False
 
         resolved_part_path = self.part_path.resolve()
         if resolved_part_path.parent != self.download_dir or resolved_part_path != self.part_path:
             raise ValueError("temporary file path must be a regular child of download directory")
         with self.part_path.open("wb"):
             pass
+
+    @property
+    def final_integrity(self) -> str:
+        """Distinguish a pending whole-file check from an observed hash failure."""
+        if self._finalized:
+            return "verified"
+        return "failed" if self._integrity_failed else "pending"
 
     @property
     def verified_chunks(self) -> frozenset[int]:
@@ -109,6 +117,7 @@ class StorageManager:
             while data := part_file.read(1024 * 1024):
                 file_hash.update(data)
         if not hmac.compare_digest(file_hash.hexdigest(), self.manifest["file_sha256"]):
+            self._integrity_failed = True
             raise FileIntegrityError("complete file SHA-256 does not match manifest")
 
         os.replace(self.part_path, self.target_path)

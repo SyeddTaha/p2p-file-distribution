@@ -17,6 +17,7 @@ import httpx
 from p2p.config import MAX_PEER_CONNECTIONS, STALL_TIMEOUT_SEC
 from p2p.peer.connection import PeerConnection
 from p2p.peer.downloader import NoAvailablePeersError, SwarmDownloader
+from p2p.peer.metrics import ConnectionSnapshot, PeerSnapshot
 from p2p.peer.rate_limiter import TokenBucketRateLimiter
 from p2p.peer.scheduler import DownloadScheduler
 from p2p.peer.server import PeerServer
@@ -124,6 +125,8 @@ class SwarmPeer:
         self._stopped_event = asyncio.Event()
         self._outbound_connection_count = 0
         self._download_active = False
+        self._downloader: SwarmDownloader | None = None
+        self._seed_verified = False
         self.received_haves: set[tuple[str, int]] = set()
         self.sent_haves: set[int] = set()
         self._known_peers: dict[str, PeerInfo] = {}
@@ -140,6 +143,59 @@ class SwarmPeer:
         if self._server is None:
             raise RuntimeError("peer has not been started")
         return self._server.listen_port
+
+    def snapshot(self) -> PeerSnapshot:
+        """Copy live engine state on its owning event loop, without network I/O."""
+        downloader = self._downloader
+        chunks = (
+            self.storage.verified_chunks
+            if self.storage is not None
+            else frozenset(self._available_chunks if self._seed_verified else ())
+        )
+        verified_bytes = sum(self.manifest["chunks"][index]["length"] for index in chunks)
+        duration = downloader.duration_seconds if downloader else self.download_duration_seconds
+        downloaded = downloader.bytes_downloaded if downloader else self.bytes_downloaded
+        connections = []
+        inbound = self._server.active_connections if self._server else ()
+        outbound = downloader.connections if downloader else ()
+        for direction, group in (("inbound", inbound), ("outbound", outbound)):
+            for connection in group:
+                bitfield = connection.remote_bitfield
+                connections.append(
+                    ConnectionSnapshot(
+                        peer_id=connection.remote_peer_id,
+                        direction=direction,
+                        state=connection.state.name.lower(),
+                        available_chunks=len(bitfield.to_indices(self.manifest["chunk_count"]))
+                        if bitfield
+                        else None,
+                        pending_requests=len(connection.pending_requests),
+                    )
+                )
+        return PeerSnapshot(
+            peer_id=self.peer_id,
+            swarm_id=self.swarm_id,
+            host=self.host,
+            port=self._listen_port,
+            online=self._started and not self._closed,
+            upload_enabled=self._upload_enabled,
+            upload_rate_limit=self._rate_limiter.rate if self._rate_limiter else None,
+            verified_chunks=len(chunks),
+            verified_bytes=verified_bytes,
+            final_integrity="verified"
+            if self._seed_verified
+            else (self.storage.final_integrity if self.storage is not None else "pending"),
+            bytes_uploaded=self.bytes_uploaded,
+            bytes_downloaded=downloaded,
+            retries=downloader.total_retries if downloader else self.total_retries,
+            chunk_hash_failures=downloader.chunk_hash_failures
+            if downloader
+            else self.chunk_hash_failures,
+            duration_seconds=duration,
+            throughput_bytes_per_s=downloaded / duration if duration > 0 else 0.0,
+            downloaded_from=downloader.downloaded_from if downloader else {},
+            connections=tuple(connections),
+        )
 
     @property
     def is_seeder(self) -> bool:
@@ -166,6 +222,7 @@ class SwarmPeer:
                 )
                 if actual_manifest != self.manifest:
                     raise ValueError("seed file contents do not match the supplied manifest")
+                self._seed_verified = True
 
             self._server = PeerServer(
                 self.host,
@@ -444,6 +501,7 @@ class SwarmPeer:
                     on_chunk_verified=self._on_chunk_verified,
                     advertise_chunks=self._upload_enabled,
                 )
+                self._downloader = downloader
                 try:
                     await downloader.run()
                 finally:

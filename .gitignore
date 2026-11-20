@@ -46,6 +46,8 @@ bench/results/*.csv
 !bench/results/.gitkeep
 bench/plots/**
 !bench/plots/.gitkeep
+/output/
+/tmp/pdfs/
 
 # IDEs & System
 .vscode/
