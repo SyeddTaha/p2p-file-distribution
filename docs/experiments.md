@@ -181,3 +181,12 @@ no cache flushing or process isolation is attempted. RAM, per-peer CPU/memory,
 disconnect/timeout counts and external activity are not automatically captured.
 These observations cannot establish WAN/LAN performance or statistical
 significance. No Mininet, packet capture or multi-machine experiment is run.
+
+## Local UI display
+
+The [console](web-ui.md) reads the versioned CSV using `bench/analysis.py`, extracted
+from the plotting script without changing trial-validation/aggregation rules. It
+shows the N=1,2,4,8 table, makespan and throughput graphs with sample SD, repetition
+counts, warmups and exclusions. It launches no trials and supplies no replacement
+data when results are unavailable. UI smoke tests are correctness evidence, not
+additional performance measurements. Existing plotting commands remain supported.

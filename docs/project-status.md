@@ -2,6 +2,12 @@
 
 > Last updated: 2026-11-20. Milestones 1-8 are implemented and tested. Milestone 8's full default loopback sweep ran: 48 trials, 180 verified client observations, raw CSV and plots generated. The implementation and raw dataset are versioned together on `feat/download-only-baseline`.
 
+The optional local console on `feat/local-web-console` is **Tested** through API
+and separate-process HTTP/TCP scenarios. Browser visual/interaction QA remains
+unverified because the Computer Use native pipe was unavailable. See
+[web UI](web-ui.md), [design system](../DESIGN.md), and
+[ADR 0009](adr/0009-local-web-console.md).
+
 ---
 
 ## 1. Project Phase & Milestone Summary
@@ -48,6 +54,9 @@ mypy src/p2p
 
 | Area | Feature | State | Tests run? | Notes / Verification Command |
 |---|---|---|---|---|
+| Web console | Four-section local FastAPI/HTML/CSS/JS UI | **Tested** | Yes | Real TCP API/process tests cover seeding, downloading, integrity, relay, baseline, rate caps and shutdown; browser visual QA remains unverified; see local console log below |
+| Instrumentation | Live copied peer snapshots and tracker swarm listing | **Tested** | Yes | Exact verified progress, final integrity state, source contributions, observed connections and fake-clock expiry |
+| Web console | Recorded N=1,2,4,8 benchmark display | **Tested** | Yes | Existing CSV, shared pure analysis, eight summary rows and 48-trial audit; no new measured sweep |
 | Foundation | Package layout & pyproject.toml | **Tested** | Yes | `pytest`, `ruff check .`, `mypy src/p2p` passed |
 | Foundation | `requirements.txt` environment setup | **Tested** | Yes | Verified dependency locking & installation |
 | Protocol | Frame codec (length-prefixed) | **Tested** | Yes | `read_frame`/`write_frame`, bounds check before allocation |
@@ -288,7 +297,54 @@ the runner planned; README omitted Milestone 8 from its completed list; the
 architecture guide named a nonexistent `safe_target()` helper. Other specs
 were left unchanged.
 
+### Local console verification (2026-11-20)
+
+Work on `feat/local-web-console`; existing dependencies only. No new software was
+installed and no new performance sweep was run. Verification completed before
+the implementation commit. Existing report/demo documents were preserved. The
+original CLI and TCP wire protocol are unchanged.
+
+| Command | Actual result |
+|---|---|
+| `.\.venv\Scripts\python.exe -m pytest tests/integration/test_web_console.py -x -o addopts='' -q` (initial) | 1 failed, 1 passed; source contributions included a zero-byte baseline connection; excluded zero-byte entries from the copied source map |
+| Same API file after correction | 8 passed; after final-hash failure coverage, 9 passed |
+| `.\.venv\Scripts\python.exe -m pytest tests/integration/test_web_console.py tests/e2e/test_web_http_transfer.py tests/integration/test_tracker_api.py -o addopts='' -q` | 26 passed in 41.76s |
+| `.\.venv\Scripts\python.exe -m pytest -ra` (before final cancellation regression) | 389 passed, 1 upstream Starlette/httpx warning in 82.51s |
+| `.\.venv\Scripts\python.exe -m pytest tests/unit/test_web_service.py -o addopts='' -q` | First 1 failed: worker validation error replaced cancellation; after joining with `gather(return_exceptions=True)`, 1 passed in 1.25s |
+| `.\.venv\Scripts\python.exe -m pytest tests/integration/test_web_console.py tests/unit/test_web_service.py -o addopts='' -q` (5 consecutive runs) | 10 passed each; 50 executions; 4.70s, 3.56s, 4.80s, 3.85s, 3.30s |
+| `.\.venv\Scripts\python.exe -m p2p.web --help` | Exited 0; listed port, tracker URL and workspace options |
+| `.\.venv\Scripts\python.exe bench/plot_results.py --help` | Exited 0; existing direct plotting entry point preserved |
+| `.\.venv\Scripts\python.exe -m pytest -ra` (final code) | **390 passed, 1 warning in 61.51s**; existing upstream Starlette/httpx warning |
+| `.\.venv\Scripts\python.exe -m ruff check .` (final code) | **All checks passed!** |
+| `.\.venv\Scripts\python.exe -m ruff format --check src/p2p tests bench` | **58 files already formatted** |
+| `.\.venv\Scripts\python.exe -m mypy src/p2p tests bench` | **Success: no issues found in 58 source files** |
+| `node --check src/p2p/web/static/app.js` | Exited 0; no output |
+| `git diff --check` | Exited 0; no whitespace errors; LF/CRLF conversion notice for `docs/experiments.md` |
+
+The process E2E starts a real Uvicorn tracker and two independent console
+processes on ephemeral loopback HTTP ports. It imports a 1 MiB file, seeds with
+a 512 KiB/s cap, verifies downloaded SHA-256 and bytes, stops the origin and
+checks an actual completed-peer TCP relay, then verifies two baseline clients
+receive only origin payloads and upload none. It reads the real benchmark CSV,
+requires graceful server exit without forced termination and checks that console
+shutdown removes all remaining tracker memberships. API tests additionally cover
+partial verified progress, three baseline clients, final-file corruption, unsafe
+paths/manifests, request guards, limits, missing data, no peers and cancellation.
+
+Initial lint/type issues (formatting and benchmark function re-exports) were
+corrected. Browser screenshot/interaction tests were not run: both browser and
+native Computer Use entry points reported a missing native pipe. JavaScript
+syntax checks and HTTP static-asset delivery are covered, not visual layout.
+
 ## 6. Open Issues & Known Limitations
+
+- The optional web console's browser interactions and responsive visual layout
+  still need manual verification. API and real HTTP/TCP process tests passed.
+- Console files persist in the configured workspace. Catalogs/history are
+  in-memory and do not restore after restart; downloads do not resume. UI source
+  and download sizes are capped at 128 MiB; caps/settings apply at peer creation.
+- Console experiment display needs a source checkout containing the raw CSV and
+  `bench/`; it does not execute experiments or invent unavailable measurements.
 
 - Milestone 3 storage operations are synchronous; async callers must offload large file work and serialize access to a shared `StorageManager`.
 - Full test runs emit one upstream Starlette/httpx deprecation warning; it does not fail tests.

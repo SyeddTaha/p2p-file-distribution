@@ -34,6 +34,9 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"p2p.web" = ["static/*.html", "static/*.css", "static/*.js"]
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]

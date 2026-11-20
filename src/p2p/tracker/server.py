@@ -44,6 +44,18 @@ async def announce(
     return registry.announce(request)
 
 
+@app.get("/swarms", response_model=list[SwarmPeersResponse])
+async def list_swarms(
+    registry: Annotated[SwarmRegistry, Depends(get_registry)],
+) -> list[SwarmPeersResponse]:
+    """Read active membership across swarms, applying normal lazy expiry."""
+    registry.evict_stale()
+    return [
+        SwarmPeersResponse(swarm_id=swarm_id, peers=registry.get_swarm_peers(swarm_id))
+        for swarm_id in registry.active_swarms()
+    ]
+
+
 @app.get(
     "/swarms/{swarm_id}/peers",
     response_model=SwarmPeersResponse,

@@ -20,7 +20,8 @@ This system is a miniature BitTorrent-style Peer-to-Peer (P2P) file distribution
 - A **seeder** has every verified chunk. A **leecher** is still downloading but can upload chunks it has verified.
 
 ### Non-Goals
-- Databases, Redis, message queues, Docker, cloud infrastructure, or frontend UIs.
+- Databases, Redis, message queues, Docker, or cloud infrastructure. The optional
+  local UI is a bounded exception in [ADR 0009](adr/0009-local-web-console.md).
 - NAT traversal, DHT, TLS/encryption, or multi-file torrents.
 - AI/ML algorithms inside the core system.
 
@@ -65,6 +66,8 @@ The Tracker coordinates peer discovery:
   - `POST /announce`: Accepts peer announcements (`swarm_id`, `peer_id`, `host`, `port`, `event`, optional `is_seeder`). Events: `started`, `heartbeat`, `completed`, `stopped`. Returns the 30-second heartbeat interval and at most 50 active peers (excluding caller). Unknown heartbeat announcements register the peer, allowing recovery after a tracker restart.
   - `GET /swarms/{swarm_id}/peers`: Requires a 64-character lowercase hexadecimal swarm ID and returns active peers (`peer_id`, `host`, `port`, `last_seen`, `is_seeder`). A valid but unknown swarm returns an empty list.
   - `GET /health`: Basic health check.
+  - `GET /swarms`: Read-only membership of all active swarms, using the existing
+    per-swarm response schema and normal lazy expiry.
 - **Peer Expiry:** In-memory registry tracks `last_seen` timestamp using an injectable monotonic clock interface. Peers inactive for more than `3 * heartbeat_interval` (default interval: 30s, expiry: 90s) are evicted lazily during announce/list operations or by an explicit registry eviction call. Peers exactly 90 seconds old remain active.
 - **Peer Address Handling:** LAN testing uses advertised `host`/`port` provided in `/announce`.
 - **Address families:** Tracker schemas accept IPv4, IPv6, and RFC 1123 hostnames. Bracketed IPv6 literals are normalized before socket bind/connect; IPv6 loopback is tested when available.
@@ -204,3 +207,21 @@ either failure. A download with no reachable peers raises the expected
   upload totals repeated on client rows are counted once per trial. See
   [ADR 0008](adr/0008-in-process-benchmark-runner.md) and
   [experiment methodology](experiments.md) for controls and measurement limits.
+
+## 10. Optional local console
+
+`p2p.web` is a separate FastAPI app with packaged static HTML/CSS/JS. It owns
+bounded asset/transfer catalogs, background peer tasks and idempotent stop tasks.
+Each `SwarmPeer` retains ownership of its existing listener, downloader, heartbeat
+and HTTP client. App lifespan closes all console peers; the tracker remains an
+independent membership service. File distribution remains peer-to-peer TCP.
+
+`SwarmPeer.snapshot()` copies live downloader counters, exact verified storage
+bytes, connection state and per-source payload contributions without network I/O
+or scheduler mutation. Storage exposes final-file integrity separately from chunk
+completeness; the downloader retains contributions from retired peers. Existing
+final counters used by the CLI/benchmark remain available.
+
+`bench/analysis.py` contains the plotting script's extracted pure trial validation
+and aggregation. UI rendering does not import Matplotlib or run experiments.
+See [web-ui.md](web-ui.md) for API, storage, bounds and operational scope.

@@ -87,6 +87,9 @@ See [demo.md](demo.md) for the prepared presentation sequence.
 
 ## Verification scope
 
+The optional `python -m p2p.web` command runs a separate local console. Existing
+CLI commands and arguments are unchanged; see [web-ui.md](web-ui.md).
+
 Parser and command dispatch tests cover all four subcommands. The in-process
 end-to-end tests exercise tracker requests through FastAPI `ASGITransport` and
 peer transfers through real loopback TCP connections; they do not launch

@@ -323,3 +323,26 @@ Seeder, leecher, and tracker returned cleanly after Ctrl+C; the tracker
 returned an empty peer list; the process check found no leftover smoke-test
 Python processes. The generated payload, manifest, and download directory are
 test artifacts and should not be committed.
+
+## Local console checks
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/integration/test_web_console.py tests/e2e/test_web_http_transfer.py
+```
+
+Integration tests use isolated ASGI HTTP and real loopback TCP. The process E2E
+test starts a tracker and two consoles on ephemeral HTTP ports. Coverage includes
+source/manifest import, exact partial chunk progress, pending/verified/failed final
+hashes, measured sources, capped uploads, relay after origin removal, multiple
+baseline clients with zero uploads, file equality, validation, Host/origin/action
+guards, limits, unavailable results, cancellation and cleanup. The process test
+leaves baseline peers alive before graceful shutdown and requires an empty live
+tracker afterward. Forced termination fails. The tracker listing test applies
+expiry using the fake clock.
+
+The benchmark API checks eight configurations, five measured repetitions each and
+the recorded 48-trial audit, without generating new data. Run
+`node --check src/p2p/web/static/app.js` for JavaScript syntax. Browser/visual QA
+was unavailable because the Computer Use native pipe could not connect; manually
+check file selection, navigation, keyboard focus and mobile table scrolling using
+[web-ui.md](web-ui.md).

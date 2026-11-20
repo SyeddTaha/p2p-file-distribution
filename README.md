@@ -123,6 +123,13 @@ Distribute the manifest file to downloaders out of band. See the
 
 ## 6. Active Phase & Documentation Status
 
+An optional local web console demonstrates the existing engine without changing
+the CLI. Start the tracker above, run `python -m p2p.web`, and open
+`http://127.0.0.1:8080`. It provides real transfers, integrity/progress snapshots,
+peer inspection and recorded benchmark comparisons. See [web UI](docs/web-ui.md)
+for two-console demos and bounds, and [ADR 0009](docs/adr/0009-local-web-console.md)
+for the frontend exception.
+
 - **Current state:** Milestones 1–8 are tested. The measured course report and demo runbook are prepared. See [project status](docs/project-status.md) for verification and [experiments](docs/experiments.md) for measurement scope.
 - **Completed milestones:**
   - Milestone 1 — Project Foundation & Tooling Setup

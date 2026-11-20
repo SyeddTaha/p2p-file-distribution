@@ -23,3 +23,9 @@
 - **Safety:** Path traversal prevention enforced via `validate_safe_filename()`.
 - **Integrity:** SHA-256 verified per chunk before disk acceptance; whole-file SHA-256 verified before atomic `.part` rename.
 - **Limits:** 4 MiB maximum encoded manifest size, 30,000 chunks maximum, 1 MiB maximum chunk size; empty files are unsupported.
+
+The [local console](web-ui.md) uses the same builders and bounded strict loader.
+Its source/download cap is 128 MiB, with normal 256 KiB default generated chunks;
+the v1 schema and swarm ID are unchanged. Read-only storage status distinguishes
+pending final verification, observed whole-file hash failure, and successful
+atomic publication. Output exports require a completed verified download.
