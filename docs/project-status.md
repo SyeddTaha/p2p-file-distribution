@@ -2,11 +2,19 @@
 
 > Last updated: 2026-11-20. Milestones 1-8 are implemented and tested. Milestone 8's full default loopback sweep ran: 48 trials, 180 verified client observations, raw CSV and plots generated. The implementation and raw dataset are versioned together on `feat/download-only-baseline`.
 
-The optional local console on `feat/local-web-console` is **Tested** through API
-and separate-process HTTP/TCP scenarios. Browser visual/interaction QA remains
-unverified because the Computer Use native pipe was unavailable. See
+The optional local console on `feat/local-web-console` is **Tested** through API,
+separate-process HTTP/TCP scenarios and the redesigned browser workflows. See
 [web UI](web-ui.md), [design system](../DESIGN.md), and
 [ADR 0009](adr/0009-local-web-console.md).
+
+The user-approved reference-led frontend redesign is **Tested**. The latest full
+suite passed 390 tests with one existing upstream warning; the browser harness
+passed 13 workflow groups, including real transfers, baseline, relay, keyboard
+focus, responsive layouts and offline/recovery states. Ruff, formatting, mypy
+and JS syntax passed. Python code and existing tests are unchanged. See the
+[verification record](frontend-redesign-verification.md),
+[design system](../DESIGN_SYSTEM.md), [pre-edit audit](frontend-redesign-audit.md)
+and [approved plan](frontend-redesign-plan.md) for scope, checkpoints and limits.
 
 ---
 
@@ -54,7 +62,8 @@ mypy src/p2p
 
 | Area | Feature | State | Tests run? | Notes / Verification Command |
 |---|---|---|---|---|
-| Web console | Four-section local FastAPI/HTML/CSS/JS UI | **Tested** | Yes | Real TCP API/process tests cover seeding, downloading, integrity, relay, baseline, rate caps and shutdown; browser visual QA remains unverified; see local console log below |
+| Web console | Reference-led frontend visual and usability redesign | **Tested** | Yes | 13 Chrome workflow groups passed; five viewport widths, keyboard/focus, live data and failure/recovery; see redesign verification |
+| Web console | Four-section local FastAPI/HTML/CSS/JS UI | **Tested** | Yes | Existing 390-test suite plus real browser transfer/import/export, relay, baseline and rate-cap coverage; accessibility/platform limits recorded |
 | Instrumentation | Live copied peer snapshots and tracker swarm listing | **Tested** | Yes | Exact verified progress, final integrity state, source contributions, observed connections and fake-clock expiry |
 | Web console | Recorded N=1,2,4,8 benchmark display | **Tested** | Yes | Existing CSV, shared pure analysis, eight summary rows and 48-trial audit; no new measured sweep |
 | Foundation | Package layout & pyproject.toml | **Tested** | Yes | `pytest`, `ruff check .`, `mypy src/p2p` passed |
@@ -85,7 +94,7 @@ mypy src/p2p
 | Peer | Tracker-connected `SwarmPeer` lifecycle | **Tested** | Yes | Started, periodic heartbeat, completed, stopped; startup rollback closes HTTP resources and signals stopped even when server shutdown fails; discovery cancellation closes attempts and restores capacity |
 | CLI | Tracker, manifest, seeder, and downloader commands | **Tested** | Yes | Editable install succeeded; both help entry points verified; invalid inputs and no-peer downloads report nonzero exit codes without tracebacks |
 | End-to-end | Tracker-driven multi-leecher transfer | **Tested** | Yes | In-process FastAPI tracker and real loopback TCP; concurrent and staged relay tests verify a completed leecher serves actual nonzero PIECE bytes to a later leecher after the origin stops |
-| Testing | Unit, integration, and E2E tests | **Tested** | Yes | Latest full suite: 376 passed (2026-11-20); one upstream Starlette/httpx warning; see verification log |
+| Testing | Unit, integration, and E2E tests | **Tested** | Yes | Latest full suite: 390 passed (2026-11-20); one upstream Starlette/httpx warning; redesign browser check separately passed 13 workflow groups |
 | Benchmarking | Download-only baseline controls | **Tested** | Yes | `SwarmPeer(upload_enabled=False)` / `download-file --no-upload`; three concurrent clients receive only origin payloads; partial and complete clients refuse uploads |
 | Benchmarking | Shared token-bucket upload rate limiter | **Tested** | Yes | `TokenBucketRateLimiter`, `SwarmPeer(upload_rate_limit=...)`, CLI `--upload-rate-limit`; deterministic clock, burst, cancellation safety; 28 unit tests |
 | Benchmarking | Transfer metric counters | **Tested** | Yes | `bytes_uploaded`, `bytes_downloaded`, `total_retries`, `chunk_hash_failures`, duration, throughput on `SwarmDownloader` and `SwarmPeer`; full suite 343 passed |
@@ -336,10 +345,33 @@ corrected. Browser screenshot/interaction tests were not run: both browser and
 native Computer Use entry points reported a missing native pipe. JavaScript
 syntax checks and HTTP static-asset delivery are covered, not visual layout.
 
+### Frontend redesign verification (2026-11-20)
+
+The user approved the audit/specification/implementation plan before code edits.
+Checkpoints preserve both original source and the approved planning state.
+Frontend HTML/CSS/JS, local assets and asset packaging changed; no Python source,
+existing test or benchmark data changed. Exact commands, early automation
+failures and corrections, inspected screenshots, file inventory and remaining
+limits are in [frontend-redesign-verification.md](frontend-redesign-verification.md).
+
+- Latest full suite: `.\.venv\Scripts\python.exe -m pytest -ra` reported
+  `390 passed, 1 warning in 71.35s (0:01:11)`.
+- Ruff: `All checks passed!`; formatting: `58 files already formatted`;
+  mypy: `Success: no issues found in 58 source files`; JS syntax checks exited 0.
+- `node tests/browser/console.mjs`: 13 workflow groups passed, including
+  source/manifest import, SHA-256-checked export, capped transfer, relay,
+  baseline, cancellation, five viewport widths, offline state and recovery.
+  The final repeat after visual polish also passed 13 groups and required empty
+  tracker membership after graceful console shutdown.
+- A locally built wheel includes the fonts, licenses, provenance and favicon.
+  No dependencies were installed and no new experiment measurement was run.
+
 ## 6. Open Issues & Known Limitations
 
-- The optional web console's browser interactions and responsive visual layout
-  still need manual verification. API and real HTTP/TCP process tests passed.
+- The redesign's Chrome workflows and responsive screenshots passed. Screen
+  readers, native zoom-menu operation, other browser engines and other operating
+  systems remain unverified. Existing API tests cover final-file corruption;
+  that fault was not newly injected through a browser workflow.
 - Console files persist in the configured workspace. Catalogs/history are
   in-memory and do not restore after restart; downloads do not resume. UI source
   and download sizes are capped at 128 MiB; caps/settings apply at peer creation.

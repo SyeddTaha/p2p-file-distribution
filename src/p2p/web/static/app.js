@@ -34,8 +34,11 @@ function empty(target, message, columns) {
     const row = el("tr"); const td = cell(row, message, "empty"); td.colSpan = columns; target.append(row);
   } else target.append(el("p", message, "muted"));
 }
-function table(headers, rows) {
+function table(headers, rows, focusKey) {
   const wrap = el("div", undefined, "table-wrap"); const t = el("table");
+  wrap.tabIndex = 0; wrap.setAttribute("role", "region");
+  wrap.setAttribute("aria-label", headers.join(", "));
+  wrap.dataset.focusKey = focusKey;
   const head = el("thead"); const tr = el("tr");
   headers.forEach((text) => tr.append(el("th", text))); head.append(tr);
   const body = el("tbody"); rows.forEach((row) => body.append(row));
@@ -100,14 +103,16 @@ function renderDashboard() {
   $("tracker-status").replaceChildren(status(tracker.online ? "online" : "offline"));
   $("tracker-url").textContent = tracker.url;
   $("tracker-error").textContent = tracker.error || "";
-  const summary = $("summary"); summary.replaceChildren();
+  const membership = $("summary-membership"); membership.replaceChildren();
+  const downloading = $("summary-downloading"); downloading.replaceChildren();
+  const payload = $("summary-payload"); payload.replaceChildren();
   const swarms = tracker.swarms;
   const peerCount = swarms ? new Set(swarms.flatMap((s) => s.peers.map((p) => p.peer_id))).size : "Unavailable";
-  definition(summary, "Active peers (tracker)", String(peerCount));
-  definition(summary, "Active swarms (tracker)", swarms ? String(swarms.length) : "Unavailable");
-  definition(summary, "Downloading (local)", String(state.transfers.filter((t) => t.state === "downloading").length));
-  definition(summary, "Uploaded (local payload)", bytes(state.transfers.reduce((sum, t) => sum + (t.metrics?.bytes_uploaded || 0), 0)));
-  definition(summary, "Downloaded (local payload)", bytes(state.transfers.reduce((sum, t) => sum + (t.metrics?.bytes_downloaded || 0), 0)));
+  definition(membership, "Active peers (tracker)", String(peerCount));
+  definition(membership, "Active swarms (tracker)", swarms ? String(swarms.length) : "Unavailable");
+  definition(downloading, "Downloading (local)", String(state.transfers.filter((t) => t.state === "downloading").length));
+  definition(payload, "Uploaded (local payload)", bytes(state.transfers.reduce((sum, t) => sum + (t.metrics?.bytes_uploaded || 0), 0)));
+  definition(payload, "Downloaded (local payload)", bytes(state.transfers.reduce((sum, t) => sum + (t.metrics?.bytes_downloaded || 0), 0)));
   const body = $("dashboard-transfers"); body.replaceChildren();
   state.transfers.forEach((t) => {
     const row = el("tr"); const name = el("div"); name.append(el("p", t.file_name, "file-name"), el("code", t.metrics?.peer_id || t.id)); cell(row, name);
@@ -158,7 +163,7 @@ function renderNetwork() {
       cell(row, local?.metrics ? (local.metrics.upload_enabled ? "Enabled" : "Disabled (baseline)") : "Unknown (remote)");
       cell(row, local ? local.state : "Registered; connection state unavailable"); return row;
     });
-    entry.append(table(["Peer", "Address", "Role", "Upload capability", "Local state"], rows)); host.append(entry);
+    entry.append(table(["Peer", "Address", "Role", "Upload capability", "Local state"], rows, `swarm-${swarm.swarm_id}`)); host.append(entry);
   });
   const signature = state.transfers.map((t) => t.id).join(",");
   if (signature !== peerSignature) {
@@ -180,18 +185,23 @@ function renderNetwork() {
     cell(row, c.state === "closed" ? "disconnected" : c.state.replaceAll("_", " "));
     cell(row, c.available_chunks ?? "Unavailable"); cell(row, c.pending_requests); return row;
   });
-  if (rows.length) details.append(table(["Remote peer", "Direction", "Connection", "Advertised chunks", "Pending requests"], rows));
+  if (rows.length) details.append(table(["Remote peer", "Direction", "Connection", "Advertised chunks", "Pending requests"], rows, `connections-${transfer.id}`));
   else details.append(el("p", "No observed TCP connections for this peer.", "muted"));
   details.append(el("h3", "Verified chunk sources"));
   const sources = Object.entries(m.downloaded_from).filter(([, value]) => value > 0).map(([peer, count]) => {
     const row = el("tr"); cell(row, el("code", peer)); cell(row, bytes(count), "numeric"); return row;
   });
-  if (sources.length) details.append(table(["Serving peer", "Verified bytes received"], sources));
+  if (sources.length) details.append(table(["Serving peer", "Verified bytes received"], sources, `sources-${transfer.id}`));
   else details.append(el("p", "No verified payload received by this peer yet.", "muted"));
 }
 function render() {
   const focusKey = document.activeElement?.dataset.focusKey;
+  const scrollPositions = new Map([...document.querySelectorAll(".table-wrap[data-focus-key]")]
+    .map((region) => [region.dataset.focusKey, region.scrollLeft]));
   renderAssets(); renderDashboard(); renderTransfers(); renderNetwork();
+  document.querySelectorAll(".table-wrap[data-focus-key]").forEach((region) => {
+    region.scrollLeft = scrollPositions.get(region.dataset.focusKey) || 0;
+  });
   if (focusKey) document.querySelector(`[data-focus-key="${focusKey}"]`)?.focus({ preventScroll: true });
 }
 function refresh() {
@@ -249,14 +259,14 @@ function chart(id, summaries, metric, divisor, unit) {
   const y = (v) => 225 - v / maximum * 190;
   for (let tick = 0; tick <= 4; tick++) {
     const value = maximum * tick / 4;
-    svg.append(svgNode("line", { x1: 60, x2: 485, y1: y(value), y2: y(value), stroke: "#d7ddd9" }));
+    svg.append(svgNode("line", { x1: 60, x2: 485, y1: y(value), y2: y(value), stroke: "#55515d" }));
     svg.append(svgNode("text", { x: 51, y: y(value) + 4, "text-anchor": "end" }, value.toFixed(1)));
   }
   [1, 2, 4, 8].forEach((n) => svg.append(svgNode("text", { x: x(n), y: 249, "text-anchor": "middle" }, String(n))));
   svg.append(svgNode("text", { x: 65, y: 20 }, unit), svgNode("text", { x: 260, y: 272, "text-anchor": "middle" }, "Number of clients (N)"));
   for (const mode of ["baseline", "p2p"]) {
     const items = data.filter((s) => s.mode === mode).sort((a, b) => a.num_clients - b.num_clients);
-    const color = mode === "p2p" ? "#21633f" : "#59635d";
+    const color = mode === "p2p" ? "#DAF163" : "#BBB2F5";
     svg.append(svgNode("polyline", { points: items.map((s) => `${x(s.num_clients)},${y(s.means[metric] / divisor)}`).join(" "), fill: "none", stroke: color, "stroke-width": 2, "stroke-dasharray": mode === "baseline" ? "5 3" : "none" }));
     items.forEach((s) => {
       const px = x(s.num_clients); const mean = s.means[metric] / divisor; const sd = s.stds[metric] / divisor;
@@ -323,5 +333,12 @@ $("peer-form").addEventListener("submit", (event) => {
   });
 });
 window.addEventListener("hashchange", navigate);
+document.querySelector(".skip-link").addEventListener("click", (event) => {
+  event.preventDefault(); $("main-content").focus();
+});
+document.querySelectorAll(".table-wrap").forEach((wrap) => {
+  wrap.tabIndex = 0; wrap.setAttribute("role", "region");
+  wrap.setAttribute("aria-label", [...wrap.querySelectorAll("th")].map((th) => th.textContent).join(", "));
+});
 navigate(); refresh();
 setInterval(refresh, 1000);

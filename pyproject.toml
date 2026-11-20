@@ -35,7 +35,7 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-"p2p.web" = ["static/*.html", "static/*.css", "static/*.js"]
+"p2p.web" = ["static/*.html", "static/*.css", "static/*.js", "static/*.svg", "static/fonts/*.woff2", "static/fonts/*.txt", "static/fonts/*.json"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"

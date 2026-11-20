@@ -5,32 +5,40 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Local control console for verified P2P file distribution">
   <title>P2P console</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/app.js" defer></script>
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
   <header class="topbar">
-    <a class="brand" href="#dashboard">P2P console</a>
+    <a class="brand" href="#dashboard"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M8 8h16v16H8z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="8" cy="8" r="5" fill="currentColor"/><circle cx="24" cy="24" r="5" fill="currentColor"/></svg>P2P console</a>
     <nav aria-label="Main navigation">
-      <a href="#dashboard" aria-current="page">Dashboard</a>
-      <a href="#transfer">File Transfer</a>
-      <a href="#network">Peer Network</a>
-      <a href="#experiments">Experiments</a>
+      <a href="#dashboard" aria-current="page"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="12" y="3" width="5" height="5" rx="1"/><rect x="3" y="12" width="5" height="5" rx="1"/><rect x="12" y="12" width="5" height="5" rx="1"/></svg>Dashboard</a>
+      <a href="#transfer"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M5 2.5h6l4 4v11H5zM11 2.5v4h4M7.5 12h5M10 9.5v5"/></svg>File Transfer</a>
+      <a href="#network"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="10" cy="4" r="2.5"/><circle cx="4" cy="15" r="2.5"/><circle cx="16" cy="15" r="2.5"/><path d="m8.7 6.2-3.4 6.6m6-6.6 3.4 6.6M6.5 15h7"/></svg>Peer Network</a>
+      <a href="#experiments"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M3 3v14h14M7 13V9m4 4V5m4 8v-3"/></svg>Experiments</a>
     </nav>
-    <span class="local-label">Local workspace</span>
+    <div class="sidebar-note"><span class="workspace-dot" aria-hidden="true"></span><strong>Local workspace</strong><p>Peer-to-peer files.<br>Verified, chunk by chunk.</p><span class="sidebar-footnote">TCP data plane</span></div>
   </header>
-  <main>
+  <main id="main-content" tabindex="-1">
+    <div class="workspace-bar"><span class="workspace-label">File distribution workspace</span>
     <div id="connection-message" class="notice" role="status">Connecting to the console…</div>
+    </div>
     <div id="error" class="error" role="alert" hidden></div>
 
     <section id="dashboard" aria-labelledby="dashboard-title">
       <div class="page-heading"><div><h1 id="dashboard-title">Dashboard</h1>
         <p class="muted">Tracker membership and transfers managed by this console.</p></div>
-        <button id="refresh" type="button">Refresh</button>
+        <button id="refresh" type="button"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M16.5 8A6.5 6.5 0 1 0 16 13M16.5 3.5V8H12"/></svg>Refresh</button>
       </div>
       <div class="tracker-line"><strong>Tracker</strong><span id="tracker-status">Checking…</span>
         <code id="tracker-url"></code><span id="tracker-error" class="muted"></span></div>
-      <dl id="summary" class="summary"></dl>
+      <div id="summary" class="summary">
+        <article class="metric-card membership-card"><h2><span class="icon-disc"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="7" cy="6" r="3"/><path d="M1.5 17v-2a5.5 5.5 0 0 1 11 0v2M13 3a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3.5 5"/></svg></span>Tracker membership</h2><dl id="summary-membership"></dl><p class="muted">Registered peers and swarms across the tracker.</p></article>
+        <article class="metric-card activity-card"><h2>Downloading <span class="metric-scope">Local peers</span></h2><dl id="summary-downloading"></dl></article>
+        <article class="metric-card payload-card"><h2><span class="icon-disc"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M6 16V4m-3 3 3-3 3 3m5-3v12m-3-3 3 3 3-3"/></svg></span>Local payload totals</h2><dl id="summary-payload"></dl><p>Includes retained peers from this console session.</p></article>
+      </div>
       <h2>Local transfers</h2>
       <div class="table-wrap"><table>
         <thead><tr><th>File / peer</th><th>State</th><th>Verified progress</th><th class="numeric">Downloaded</th><th class="numeric">Uploaded</th><th>Final SHA-256</th></tr></thead>
@@ -65,9 +73,14 @@
         <div class="fields">
           <div><label for="asset">File manifest</label><select id="asset" required><option value="">Import a file or manifest first</option></select></div>
           <div><label for="kind">Operation</label><select id="kind"><option value="download">Download</option><option value="seed">Seed source file</option></select></div>
-          <div><label for="upload-rate">Upload limit (bytes/s)</label><input id="upload-rate" type="number" min="1" max="1073741824" step="1" placeholder="Unlimited"></div>
         </div>
+        <details id="advanced-settings" class="advanced-settings" open>
+        <summary>Advanced peer settings</summary>
+        <div class="advanced-content">
+        <div class="rate-field"><label for="upload-rate">Upload limit (bytes/s)</label><input id="upload-rate" type="number" min="1" max="1073741824" step="1" placeholder="Unlimited"></div>
         <label class="checkbox"><input id="download-only" type="checkbox"> Download-only baseline (disable chunk uploads)</label>
+        </div>
+        </details>
         <p class="muted">For an origin-only baseline, enable download-only on every client and keep one uploading seed. Rate limits apply across a peer's connections with an initial one-second burst. Settings apply to each new peer.</p>
         <button id="start-peer" class="primary" type="submit" disabled>Start peer</button>
         <p id="peer-feedback" class="feedback" role="status"></p>
@@ -106,7 +119,7 @@
       <div id="exclusions"></div>
       <p class="muted note">Results come from the existing harness on one host using loopback TCP and an in-process ASGI tracker. Warmups and failed or incomplete trials are excluded as whole trials and retained in the audit. These measurements do not establish LAN/WAN performance. Run experiments from the existing terminal harness; this console only reads results.</p>
     </section>
-  </main>
   <footer>Peer file distribution uses TCP · UI state refreshes every second · No external assets</footer>
+  </main>
 </body>
 </html>

@@ -4,6 +4,11 @@ The four sections operate the existing engine: Dashboard, File Transfer, Peer
 Network and Experiments. See [ADR 0009](adr/0009-local-web-console.md) for the
 frontend exception and [DESIGN.md](../DESIGN.md) for the shared design system.
 
+The reference-led redesign uses a charcoal sidebar on desktop and wrapping
+navigation on mobile, with light-gray content, lime actions and lavender
+emphasis. All four sections and existing operations remain. Fonts and SVG assets
+are bundled locally; the browser makes no external asset requests.
+
 ## Start
 
 From the repository root with the existing environment, in separate terminals:
@@ -45,7 +50,9 @@ A second independent console can join the same tracker:
 6. Stop individual peers or stop the console with Ctrl+C. Shutdown cancels and
    awaits transfers, connections, heartbeats and best-effort tracker removal.
 
-Upload caps apply to new peers; stop/start to change one. The shared token bucket
+Upload caps apply to new peers; stop/start to change one. The upload limit
+and download-only checkbox are accessible in **Advanced peer settings**, which
+starts open and retains its open/closed state during polling. The token bucket
 has an initial one-second burst. Very low caps relative to chunk size can trigger
 the engine's existing 15-second request timeout. UI bounds are separate from CLI
 bounds; see [ADR 0009](adr/0009-local-web-console.md).
@@ -123,6 +130,9 @@ process E2E test starts one tracker and two consoles on ephemeral loopback HTTP
 ports, checks TCP transfer and verifies tracker removal after console shutdown.
 These are correctness checks, not new benchmark performance measurements.
 
-Browser interaction and responsive visual inspection could not run in the
-implementation session: Computer Use's native pipe was unavailable. Manually
-verify file selection, navigation, keyboard focus and mobile table scrolling.
+The redesign additionally has a dependency-free Chrome browser harness:
+`node tests/browser/console.mjs`. It uses the existing process fixtures and real
+loopback transfers, with a separate offline-tracker console and browser transport
+fault injection. Thirteen workflow groups passed; screenshots were inspected.
+See the [verification record](frontend-redesign-verification.md) for exact scope,
+commands, error-path coverage and remaining accessibility/platform limitations.
