@@ -109,3 +109,51 @@ Chat history is not memory. Anything a future contributor (human or AI) needs mu
 - Decisions and rejected alternatives: `docs/adr/NNNN-title.md`.
 - Open questions and known issues: listed in `docs/project-status.md`.
 - Before starting a task, read `docs/project-status.md` and the relevant spec; at the end, update them.
+
+## P2P Web Console Redesign: Non-Negotiable Rules
+
+This project has an existing working P2P file distribution engine and FastAPI web console.
+
+The current task is strictly a frontend visual and usability redesign.
+
+### Functionality preservation
+
+- Do not modify the P2P networking engine, tracker, TCP protocol, scheduler, storage, hashing, manifest format, or benchmarking logic.
+- Do not change existing FastAPI endpoint contracts, request/response schemas, or backend behavior.
+- Do not remove existing functionality, even if it appears technical or unnecessary.
+- Preserve all existing forms, controls, validation, transfer operations, download links, and error handling.
+- Preserve upload rate limiting, download-only baseline mode, peer controls, and manifest import/export.
+- Preserve real-time status updates and existing polling behavior.
+- Preserve the distinction between local transfer statistics and tracker-wide statistics.
+- Do not replace live data with hardcoded examples.
+- Do not implement new backend features, including automatic manifest sharing, unless separately authorized.
+- Do not change existing test expectations merely to accommodate a redesigned UI.
+
+### Frontend constraints
+
+- Use vanilla HTML, CSS, and JavaScript.
+- Do not introduce React, Vue, Angular, Tailwind, or a frontend build system.
+- Prefer existing dependencies and locally bundled assets.
+- Preserve existing API integration behavior.
+- Keep technical settings accessible through advanced panels, drawers, or detail views.
+- Ensure the redesigned interface works with the existing backend.
+
+### Verification requirements
+
+Before editing:
+1. Inspect the existing frontend and API integration.
+2. Inventory all current features and user interactions.
+3. Record the current Git branch, commit, and working-tree status.
+4. Run relevant baseline tests and report their results.
+5. Create a rollback checkpoint without overwriting unrelated work.
+
+After editing:
+1. Run all relevant existing tests.
+2. Test every existing user workflow.
+3. Verify browser console errors and failed network requests.
+4. Compare screenshots against the supplied design reference.
+5. Report all changed files and test results.
+
+If a design requirement conflicts with existing functionality, preserve functionality and explain the conflict.
+
+Never claim that functionality is preserved without testing it.
